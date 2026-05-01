@@ -11,7 +11,7 @@ DATA_DIR="/usr/share/hp-manager"
 BIN_LINK="/usr/bin/hp-manager"
 UNINSTALLER_LINK="/usr/bin/hp-manager-uninstall"
 CONFIG_DIR="/etc/hp-manager"
-VERSION="1.3.0"
+VERSION="1.3.5"
 
 # Colors
 RED='\033[0;31m'
@@ -250,6 +250,20 @@ install_dependencies() {
 manage_driver() {
     local action=$1
     if [ -d "driver" ] && [ -f "driver/setup.sh" ]; then
+        if [ "$action" = "install" ]; then
+            printf '\n%s\n' "--------------------------------------------------------"
+            printf '%s\n'   "Do you want to install the custom hp-wmi/rgb driver via DKMS?"
+            printf '%s\n'   "If your kernel is 7.0 or higher AND you can control fans out-of-the-box, you do NOT need this."
+            printf '\n%s\n'   "Özel hp-wmi/rgb DKMS sürücüsünü yüklemek istiyor musunuz?"
+            printf '%s\n'   "Eğer kernel sürümünüz 7.0 veya üzerindeyseniz VE fan kontrolü zaten çalışıyorsa, bunu yüklemenize gerek YOKTUR."
+            printf '%s\n' "--------------------------------------------------------"
+            printf '%s' "Install custom driver? / Özel sürücü yüklensin mi? (y/N): "
+            read -r drv_choice
+            if [[ ! "$drv_choice" =~ ^[Yy]$ ]]; then
+                info "Skipping custom driver installation."
+                return
+            fi
+        fi
         info "Running driver ${action}..."
         if ! (cd driver && chmod +x setup.sh && ./setup.sh "$action"); then
             warn "$(msg driver_failed "$action")"
@@ -514,9 +528,20 @@ LAUNCHER
     mkdir -p /usr/share/polkit-1/actions
     mkdir -p /usr/share/applications
 
-    cp data/com.yyl.hpmanager.conf    /etc/dbus-1/system.d/
-    cp data/com.yyl.hpmanager.service /etc/systemd/system/com.yyl.hpmanager.service
-    cp data/com.yyl.hpmanager.policy  /usr/share/polkit-1/actions/
+    # Ensure legacy monolithic service is stopped and removed
+    systemctl stop com.yyl.hpmanager.service 2>/dev/null || true
+    systemctl disable com.yyl.hpmanager.service 2>/dev/null || true
+    rm -f /etc/systemd/system/com.yyl.hpmanager.service
+    rm -f /etc/dbus-1/system.d/com.yyl.hpmanager.conf
+
+    for svc in fan rgb power mux platform; do
+        if [ -f "data/com.yyl.hpmanager.${svc}.conf" ]; then
+            cp "data/com.yyl.hpmanager.${svc}.conf" /etc/dbus-1/system.d/
+        fi
+        if [ -f "data/hpm-${svc}.service" ]; then
+            cp "data/hpm-${svc}.service" /etc/systemd/system/
+        fi
+    done
     cp data/com.yyl.hpmanager.desktop /usr/share/applications/
 
     # Ensure drivers load on boot via modules-load.d
@@ -542,6 +567,10 @@ UNINSTALLER_LINK="/usr/bin/hp-manager-uninstall"
 echo "Stopping and disabling services..."
 systemctl stop    hp-manager.service com.yyl.hpmanager.service 2>/dev/null || true
 systemctl disable hp-manager.service com.yyl.hpmanager.service 2>/dev/null || true
+for svc in fan rgb power mux platform; do
+    systemctl stop "hpm-${svc}.service" 2>/dev/null || true
+    systemctl disable "hpm-${svc}.service" 2>/dev/null || true
+done
 
 echo "Removing files..."
 rm -f /etc/systemd/system/hp-manager.service
@@ -551,7 +580,10 @@ rm -rf "$INSTALL_DIR"
 rm -rf "$DATA_DIR"
 rm -rf "/var/lib/hp-manager"
 rm -f /etc/dbus-1/system.d/com.yyl.hpmanager.conf
-rm -f /usr/share/polkit-1/actions/com.yyl.hpmanager.policy
+for svc in fan rgb power mux platform; do
+    rm -f "/etc/systemd/system/hpm-${svc}.service"
+    rm -f "/etc/dbus-1/system.d/com.yyl.hpmanager.${svc}.conf"
+done
 rm -f /usr/share/applications/com.yyl.hpmanager.desktop
 rm -f /usr/share/icons/hicolor/48x48/apps/omenapplogo.png
 rm -f /etc/modules-load.d/hp-rgb-lighting.conf
@@ -566,8 +598,10 @@ UNINSTALLER
     chmod +x "$UNINSTALLER_LINK"
 
     systemctl daemon-reload
-    systemctl enable  com.yyl.hpmanager.service
-    systemctl restart com.yyl.hpmanager.service || warn "Daemon failed to start — check: journalctl -u com.yyl.hpmanager.service"
+    for svc in fan rgb power mux platform; do
+        systemctl enable "hpm-${svc}.service" || true
+        systemctl restart "hpm-${svc}.service" || warn "Daemon hpm-${svc} failed to start"
+    done
 
     # Omen Key shortcut
     setup_omen_key_shortcut
@@ -582,6 +616,10 @@ do_uninstall() {
 
     systemctl stop    hp-manager.service com.yyl.hpmanager.service 2>/dev/null || true
     systemctl disable hp-manager.service com.yyl.hpmanager.service 2>/dev/null || true
+    for svc in fan rgb power mux platform; do
+        systemctl stop "hpm-${svc}.service" 2>/dev/null || true
+        systemctl disable "hpm-${svc}.service" 2>/dev/null || true
+    done
 
     manage_driver "uninstall"
 
@@ -593,7 +631,10 @@ do_uninstall() {
     rm -rf "$DATA_DIR"
     rm -rf "/var/lib/hp-manager"
     rm -f /etc/dbus-1/system.d/com.yyl.hpmanager.conf
-    rm -f /usr/share/polkit-1/actions/com.yyl.hpmanager.policy
+    for svc in fan rgb power mux platform; do
+        rm -f "/etc/systemd/system/hpm-${svc}.service"
+        rm -f "/etc/dbus-1/system.d/com.yyl.hpmanager.${svc}.conf"
+    done
     rm -f /usr/share/applications/com.yyl.hpmanager.desktop
     rm -f /usr/share/icons/hicolor/48x48/apps/omenapplogo.png
     rm -f /etc/modules-load.d/hp-rgb-lighting.conf

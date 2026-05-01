@@ -3004,6 +3004,21 @@ static int hp_wmi_hwmon_init(void)
 	 * Apply initial fan settings.  The workqueue is not yet running so
 	 * we can call apply_fan_settings() without holding hwmon_lock.
 	 */
+
+	/* 
+	 * [Patch by xcellsior]
+	 * On boards whose EC layout has not been fully characterised
+	 * (ec_tp_offset == HP_EC_OFFSET_UNKNOWN), an unsolicited fan-control
+	 * WMI write at probe makes some SBIOS implementations disable the
+	 * NVIDIA Dynamic Boost DC controller, capping GPU TGP at the base
+	 * value (e.g. 80 W on the HP Omen Max 16, board 8D41). Defer
+	 * fan-mode reconciliation to the first userspace pwm_enable write
+	 * on these boards.
+	 */
+	if (active_thermal_profile_params &&
+	    active_thermal_profile_params->ec_tp_offset == HP_EC_OFFSET_UNKNOWN)
+		return 0;
+
 	hp_wmi_apply_fan_settings(priv);
 
 	return 0;

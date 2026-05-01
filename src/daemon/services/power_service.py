@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+"""OMEN Command Center for Linux — Power Profile Microservice.
+
+Owns power-profile management (PPD / Tuned / OMEN Direct) and NVIDIA
+GPU power-limit synchronisation.  Exposes its functionality over D-Bus
+as ``com.yyl.hpmanager.power``.
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import threading
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from common.logging_config import setup_logging
+from common.config import ServiceConfig
+from common.dbus_helpers import run_service
+from common.sysfs import sysfs_exists, sysfs_write
+
+from pydbus import SystemBus
+
+logger = setup_logging("power")
+
+
+# ─── Power Profile Controller ────────────────────────────────────────────────
+
+
+class PowerProfileController:
+    PPD_BUS = "net.hadess.PowerProfiles"
+    PPD_PATH = "/net/hadess/PowerProfiles"
+    TUNED_BUS = "com.redhat.tuned"
+    TUNED_PATH = "/Tuned"
+
+    def __init__(self):
+        self.mode = "ppd"
+        self.available = False
+        self.bus = SystemBus()
+        self.proxy = None
+
+        try:
+            self.proxy = self.bus.get(self.TUNED_BUS, self.TUNED_PATH)
+            self.proxy.active_profile()
+            self.mode = "tuned"
+            self.available = True
+            logger.info("PowerProfileController: Using Tuned backend")
+        except Exception:
+            try:
+                self.proxy = self.bus.get(self.PPD_BUS, self.PPD_PATH)
+                self.mode = "ppd"
+                self.available = True
+                logger.info("PowerProfileController: Using Power-Profiles-Daemon backend")
+            except Exception:
+                if sysfs_exists("/sys/devices/platform/hp-wmi/thermal_profile") or \
+                   sysfs_exists("/sys/devices/platform/hp-omen/thermal_profile"):
+                    self.mode = "omen_direct"
+                    self.available = True
+                    logger.info("PowerProfileController: Using OMEN Direct sysfs backend")
+                else:
+                    self.proxy = None
+                    self.available = False
+                    logger.warning("PowerProfileController: No power profile backend found")
+
+    def get_profiles(self):
+        if not self.available:
+            return []
+        if self.mode == "ppd":
+            try:
+                return [p["Profile"] for p in self.proxy.Profiles]
+            except Exception:
+                return ["power-saver", "balanced", "performance"]
+        return ["power-saver", "balanced", "performance"]
+
+    def get_active(self):
+        if not self.available:
+            return "balanced"
+        try:
+            if self.mode == "ppd":
+                return self.proxy.ActiveProfile
+            if self.mode == "tuned":
+                tp = self.proxy.active_profile()
+                if "powersave" in tp:
+                    return "power-saver"
+                if "performance" in tp:
+                    return "performance"
+                return "balanced"
+            # omen_direct
+            return "balanced"
+        except Exception:
+            return "balanced"
+
+    def set_profile(self, profile):
+        if not self.available:
+            return False
+        try:
+            if self.mode == "ppd":
+                self.proxy.ActiveProfile = profile
+            elif self.mode == "tuned":
+                mapping = {
+                    "power-saver": "powersave",
+                    "balanced": "balanced",
+                    "performance": "throughput-performance",
+                }
+                self.proxy.switch_profile(mapping.get(profile, "balanced"))
+            elif self.mode == "omen_direct":
+                val = {"power-saver": "0", "balanced": "0", "performance": "1"}.get(
+                    profile, "0"
+                )
+                for path in (
+                    "/sys/devices/platform/hp-wmi/thermal_profile",
+                    "/sys/devices/platform/hp-omen/thermal_profile",
+                ):
+                    if sysfs_exists(path):
+                        sysfs_write(path, val)
+                        break
+
+            threading.Thread(
+                target=self._sync_nvidia_power, args=(profile,), daemon=True
+            ).start()
+            return True
+        except Exception as e:
+            logger.error("Power profile set error (%s): %s", self.mode, e)
+            return False
+
+    def _sync_nvidia_power(self, profile):
+        try:
+            if not shutil.which("nvidia-smi"):
+                return
+
+            if profile == "performance":
+                out = subprocess.check_output(
+                    [
+                        "nvidia-smi",
+                        "--query-gpu=power.max_limit",
+                        "--format=csv,noheader,nounits",
+                    ],
+                    timeout=2.0,
+                ).decode().strip()
+                if out:
+                    limit = int(float(out))
+                    subprocess.run(
+                        ["nvidia-smi", "-pl", str(limit)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=2.0,
+                    )
+                    logger.info("NVIDIA GPU locked to MAX Performance: %dW", limit)
+            else:
+                out = subprocess.check_output(
+                    [
+                        "nvidia-smi",
+                        "--query-gpu=power.default_limit",
+                        "--format=csv,noheader,nounits",
+                    ],
+                    timeout=2.0,
+                ).decode().strip()
+                if out:
+                    limit = int(float(out))
+                    subprocess.run(
+                        ["nvidia-smi", "-pl", str(limit)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=2.0,
+                    )
+                    logger.info("NVIDIA GPU restored to DEFAULT Base: %dW", limit)
+        except Exception as e:
+            logger.warning("Failed to sync NVIDIA power curve: %s", e)
+
+
+# ─── D-Bus Service ────────────────────────────────────────────────────────────
+
+
+class PowerService:
+    """
+    <node>
+      <interface name="com.yyl.hpmanager.power">
+        <method name="SetPowerProfile"><arg type="s" name="profile" direction="in"/><arg type="s" name="resp" direction="out"/></method>
+        <method name="GetPowerProfile"><arg type="s" name="j" direction="out"/></method>
+        <method name="Ping"><arg type="s" name="resp" direction="out"/></method>
+      </interface>
+    </node>
+    """
+
+    def __init__(self):
+        self._ctrl = PowerProfileController()
+        self._config = ServiceConfig("power", {"power_profile": "balanced"})
+        self._config.load()
+
+        # Restore saved profile
+        if self._ctrl.available:
+            saved = self._config.get("power_profile", "balanced")
+            if saved in self._ctrl.get_profiles():
+                if self._ctrl.get_active() != saved:
+                    ok = self._ctrl.set_profile(saved)
+                    logger.info("Restored power profile '%s' (success=%s)", saved, ok)
+                else:
+                    logger.info("Power profile already '%s', skipping", saved)
+
+    def SetPowerProfile(self, profile):
+        if profile not in self._ctrl.get_profiles():
+            return "FAIL"
+        ok = self._ctrl.set_profile(profile)
+        if ok:
+            self._config.set("power_profile", profile)
+            self._config.save()
+        return "OK" if ok else "FAIL"
+
+    def GetPowerProfile(self):
+        return json.dumps(
+            {
+                "available": self._ctrl.available,
+                "active": self._ctrl.get_active(),
+                "profiles": self._ctrl.get_profiles(),
+            }
+        )
+
+    def Ping(self):
+        return "OK"
+
+
+# ─── Entry point ──────────────────────────────────────────────────────────────
+
+
+def main():
+    service = PowerService()
+    if service._ctrl.available:
+        logger.info("Power profiles: %s", service._ctrl.get_profiles())
+    run_service("com.yyl.hpmanager.power", service, service_name="power")
+
+
+if __name__ == "__main__":
+    main()

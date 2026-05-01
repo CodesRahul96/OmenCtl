@@ -1,5 +1,5 @@
 
- # OMEN Command Center for Linux v1.3.0 #
+ # OMEN Command Center for Linux v1.3.5 #
 <p align="center">
   <img src="images/omenapplogo.png" alt="Logo" width="250">
 
@@ -19,20 +19,14 @@
 
 **OMEN Command Center for Linux** is a native Linux application designed to unlock the full potential of HP Omen and Victus series laptops. It serves as an open-source alternative to the official OMEN Gaming Hub, providing essential controls in a modern, user-friendly interface.
 
-**New in v1.3.0:**
+**New in v1.3.5:**
 
-- 🚀 **Completely Renewed Experience**: OMEN Command Center for Linux was fully renewed in v1.3.0 with a redesigned interface flow, updated page structure, and cleaner cross-page consistency.
+- 🚀 **Completely Renewed Experience**: OMEN Command Center for Linux was fully renewed in v1.3.5 with a redesigned interface flow, updated page structure, and cleaner cross-page consistency.
 - 📐 **Responsive UI Scaling**: All major pages now adapt to compact, normal, and spacious window sizes for better desktop and small-window usability.
 - 🧭 **Navigation & Header Polish**: Inline page header/back behavior and launcher layout were refined for cleaner page transitions and more consistent navigation.
 - 🌗 **Theme Consistency Improvements**: Light/dark mode readability and dropdown/popover styling were improved for clearer contrast and better visual stability.
 - 🛠️ **Settings Reliability Updates**: Debug info actions and related settings labels were stabilized and aligned with translations.
 
-**Previous in v1.2.4:**
-
-- 🧰 **Kernel Synchronization**: Synced `hp-wmi` driver with the mainline Linux kernel. Added missing board IDs (`8A4D`, `8BCA`, `8C76`) for complete compatibility.
-- 🧪 **MUX Switch Fix (Errno 22 Mitigation)**: Resolved `Invalid Argument (22)` errors during MUX switching on newer models by implementing a 4-byte payload fallback in the WMI query.
-- ⌨️ **KDE Omen Key Shortcut**: The OMEN Key desktop shortcut now activates instantly on KDE Plasma (e.g., CachyOS) without requiring a reboot, using `qdbus` to reload global shortcuts.
-- 🖱️ **Touchpad Keymap**: Restored touchpad toggle keymap support (`KEY_TOUCHPAD_OFF` / `KEY_TOUCHPAD_ON`).
 
 
 ## ✨ Features
@@ -85,6 +79,13 @@ sudo ./setup.sh install
 Note: For compatibility with older documentation, `sudo ./install.sh` redirects to `setup.sh install`.
 Installation Warning ⚠️: We recommend restarting your computer after installation.
 
+### Updating
+
+**⚠️ IMPORTANT for v1.3.5 Updates:** Because the architecture changed from a single monolithic daemon to a microservices architecture, you **must** use the updater script to cleanly remove the old services and install the new ones.
+
+1. `cd OmenCommandCenterforLinux`
+2. `sudo ./setup.sh update`
+
 ### Script Layout
 
 Maintenance scripts are now organized under:
@@ -130,7 +131,7 @@ sudo ./setup.sh uninstall
 ## 👨‍💻 Credits & Acknowledgments
 - **Lead Developer**: [yunusemreyl](https://github.com/yunusemreyl)
 - **Contributors**: [ja4e](https://github.com/ja4e), [babyinlinux](https://github.com/babyinlinux), [entharia](https://github.com/entharia) 
-- **Kernel Module Development**: Special thanks to **[TUXOV](https://github.com/TUXOV/hp-wmi-fan-and-backlight-control)** for the `hp-wmi-fan-and-backlight-control` driver, which makes fan control possible.
+- **Kernel Module Development**: Special thanks to **[TUXOV](https://github.com/TUXOV/hp-wmi-fan-and-backlight-control)** for the `hp-wmi-fan-and-backlight-control` driver, which makes fan control possible. Also thanks to **xcellsior** for the Nvidia Dynamic Boost 80W cap mitigation patch.
 
 ## ⚖️ Legal Disclaimer
 This tool is an independent open-source project developed by **yunusemreyl**.

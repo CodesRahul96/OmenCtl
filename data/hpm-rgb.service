@@ -1,0 +1,24 @@
+[Unit]
+Description=OMEN Command Center — RGB Lighting Service
+After=dbus.service
+Requires=dbus.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/libexec/hp-manager/services/rgb_service.py
+Restart=on-failure
+RestartSec=3
+
+# Security hardening
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+LockPersonality=true
+RestrictSUIDSGID=true
+PrivateNetwork=true
+
+# Minimal sysfs access for RGB LEDs
+ReadWritePaths=/sys/devices/platform/hp-rgb-lighting /etc/hp-manager
+
+[Install]
+WantedBy=multi-user.target

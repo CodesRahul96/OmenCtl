@@ -32,6 +32,10 @@ class KeyboardPage(Gtk.Box):
         self.set_spacing(0)
         self.service = service
         
+    def set_service(self, service):
+        self.service = service
+        self._sync_state()
+        
         self.model_type = _detect_model_type()
         self.branding = "OMEN" if self.model_type == "omen" else "Victus"
         

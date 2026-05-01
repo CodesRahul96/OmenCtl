@@ -1,0 +1,24 @@
+[Unit]
+Description=OMEN Command Center — Power Profile Service
+After=dbus.service
+Requires=dbus.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/libexec/hp-manager/services/power_service.py
+Restart=on-failure
+RestartSec=3
+
+# Security hardening
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+LockPersonality=true
+RestrictSUIDSGID=true
+
+# Needs network access for D-Bus communication with PPD/Tuned
+# and nvidia-smi calls
+ReadWritePaths=/sys/devices/platform/hp-wmi /sys/devices/platform/hp-omen /etc/hp-manager
+
+[Install]
+WantedBy=multi-user.target

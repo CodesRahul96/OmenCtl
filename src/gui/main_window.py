@@ -55,7 +55,7 @@ from pages.settings_page import SettingsPage
 from pages.dashboard_page import DashboardPage
 from pages.keyboard_page import KeyboardPage
 
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.5"
 CONFIG_FILE      = os.path.expanduser("~/.config/hp-manager.toml")
 CONFIG_FILE_JSON = os.path.expanduser("~/.config/hp-manager.json")
 _LAUNCHER_REFRESH_MS = 5000
@@ -2595,15 +2595,22 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         try:
             from pydbus import SystemBus
             bus = SystemBus()
-            self.service = bus.get("com.yyl.hpmanager")
-            self.ready   = True
-            self.dashboard_page.set_service(self.service)
-            self.fan_page.set_service(self.service)
-            self.lighting_page.set_service(self.service)
+            self.services = {}
+            for name in ("fan", "rgb", "power", "mux", "platform"):
+                try:
+                    self.services[name] = bus.get(f"com.yyl.hpmanager.{name}")
+                except Exception as e:
+                    print(f"⚠ {name} service unavailable: {e}")
+                    self.services[name] = None
+            
+            self.ready = True
+            self.dashboard_page.set_services(self.services)
+            self.fan_page.set_service(self.services["fan"])
+            self.lighting_page.set_service(self.services["rgb"])
             if hasattr(self, 'keyboard_page'):
-                self.keyboard_page.service = self.service
-            self.mux_page.set_service(self.service)
-            self.settings_page.set_service(self.service)
+                self.keyboard_page.set_service(self.services["platform"])
+            self.mux_page.set_service(self.services["mux"])
+            self.settings_page.set_service(self.services["mux"])
             print("Daemon connected")
             self._refresh_launcher_metrics()
         except Exception as e:

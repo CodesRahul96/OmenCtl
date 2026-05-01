@@ -1,0 +1,25 @@
+[Unit]
+Description=OMEN Command Center — Fan Control Service
+After=dbus.service
+Requires=dbus.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/libexec/hp-manager/services/fan_service.py
+Restart=on-failure
+RestartSec=3
+
+# Security hardening
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+LockPersonality=true
+RestrictSUIDSGID=true
+PrivateNetwork=true
+
+# Minimal sysfs access for fan hardware
+ReadWritePaths=/sys/class/hwmon /sys/devices/platform/hp-wmi /sys/devices/platform/hp-omen
+ReadWritePaths=/sys/firmware/acpi/platform_profile /etc/hp-manager
+
+[Install]
+WantedBy=multi-user.target

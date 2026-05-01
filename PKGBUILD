@@ -3,7 +3,7 @@
 
 pkgname=hp-laptop-manager-git
 _pkgname=HP-Laptop-Manager
-pkgver=1.3.0
+pkgver=1.3.5
 pkgrel=1
 pkgdesc="Advanced HP Omen/Victus laptop manager for Linux with RGB, Fan, and MUX control"
 arch=('x86_64')
@@ -43,9 +43,14 @@ package() {
   cp -r images/* "$pkgdir/usr/share/hp-manager/images/"
 
   # System files
-  cp data/com.yyl.hpmanager.conf "$pkgdir/etc/dbus-1/system.d/"
-  cp data/com.yyl.hpmanager.service "$pkgdir/etc/systemd/system/"
-  cp data/com.yyl.hpmanager.policy "$pkgdir/usr/share/polkit-1/actions/"
+  for svc in fan rgb power mux platform; do
+      if [ -f "data/com.yyl.hpmanager.${svc}.conf" ]; then
+          cp "data/com.yyl.hpmanager.${svc}.conf" "$pkgdir/etc/dbus-1/system.d/"
+      fi
+      if [ -f "data/hpm-${svc}.service" ]; then
+          cp "data/hpm-${svc}.service" "$pkgdir/etc/systemd/system/"
+      fi
+  done
   cp data/com.yyl.hpmanager.desktop "$pkgdir/usr/share/applications/"
 
 

@@ -260,11 +260,11 @@ _NVIDIA_SMI = None          # cached shutil.which result
 class DashboardPage(Gtk.Box):
     """Main dashboard: 4-pane grid with info bar."""
 
-    def __init__(self, service=None, on_navigate=None):
+    def __init__(self, services=None, on_navigate=None):
         super().__init__()
         self.set_orientation(Gtk.Orientation.VERTICAL)
         self.set_spacing(0)
-        self.service = service
+        self.services = services or {}
         self.on_navigate = on_navigate
         self._timer_id = None
         self._cpu_prev = None       # (total, idle) for delta calc
@@ -299,8 +299,8 @@ class DashboardPage(Gtk.Box):
             if hasattr(box, "refresh"): box.refresh()
 
     # ── public ────────────────────────────────────────────────────────────
-    def set_service(self, svc):
-        self.service = svc
+    def set_services(self, svcs):
+        self.services = svcs
 
     def set_temp_unit(self, unit):
         self._temp_unit = unit
@@ -651,22 +651,24 @@ class DashboardPage(Gtk.Box):
         self._on_action(None, mode)
 
     def _on_action(self, _btn, action_id):
-        if not self.service:
-            return
         try:
             if action_id == "max_fan":
-                fan_data = self._data.get("fan", {})
-                current_mode = fan_data.get("mode", "auto")
-                if current_mode == "max":
-                    self.service.SetFanMode("auto")
-                else:
-                    self.service.SetFanMode("max")
+                if "fan" in self.services and self.services["fan"]:
+                    fan_data = self._data.get("fan", {})
+                    current_mode = fan_data.get("mode", "auto")
+                    if current_mode == "max":
+                        self.services["fan"].SetFanMode("auto")
+                    else:
+                        self.services["fan"].SetFanMode("max")
             elif action_id == "balanced" or action_id == "eco":
-                self.service.SetPowerProfile(action_id if action_id == "balanced" else "power-saver")
+                if "power" in self.services and self.services["power"]:
+                    self.services["power"].SetPowerProfile(action_id if action_id == "balanced" else "power-saver")
             elif action_id == "performance" or action_id == "perf":
-                self.service.SetPowerProfile("performance")
+                if "power" in self.services and self.services["power"]:
+                    self.services["power"].SetPowerProfile("performance")
             elif action_id == "clean_ram":
-                self.service.CleanMemory()
+                if "platform" in self.services and self.services["platform"]:
+                    self.services["platform"].CleanMemory()
         except Exception as e:
             print(f"[Dashboard] action '{action_id}' failed: {e}")
 
@@ -686,22 +688,16 @@ class DashboardPage(Gtk.Box):
         """Run ALL blocking I/O here (daemon D-Bus, /proc, nvidia-smi)."""
         d = {}
 
-        svc = self.service
-        if svc is None:
+        if self.services:
             try:
-                from pydbus import SystemBus
-                svc = SystemBus().get("com.yyl.hpmanager")
-                self.service = svc
-            except Exception:
-                svc = None
-
-        if svc is not None:
-            for key, method in (("sys", "GetSystemInfo"),
-                                ("fan", "GetFanInfo")):
-                try:
-                    d[key] = json.loads(getattr(svc, method)())
-                except Exception:
-                    pass
+                if "platform" in self.services and self.services["platform"]:
+                    d["sys"] = json.loads(self.services["platform"].GetSystemInfo())
+            except Exception: pass
+            
+            try:
+                if "fan" in self.services and self.services["fan"]:
+                    d["fan"] = json.loads(self.services["fan"].GetFanInfo())
+            except Exception: pass
 
         # ── CPU/GPU temp — prefer daemon values for consistency with fan page ─
         si = d.get("sys", {})

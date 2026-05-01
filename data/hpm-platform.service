@@ -1,0 +1,23 @@
+[Unit]
+Description=OMEN Command Center — Platform Info Service
+After=dbus.service
+Requires=dbus.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/libexec/hp-manager/services/platform_service.py
+Restart=on-failure
+RestartSec=3
+
+# Security hardening
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+LockPersonality=true
+RestrictSUIDSGID=true
+
+# Needs broad read access for sensors + write for hwdb/drop_caches
+ReadWritePaths=/sys /etc/hp-manager /etc/udev/hwdb.d /proc/sys/vm/drop_caches
+
+[Install]
+WantedBy=multi-user.target
