@@ -973,7 +973,8 @@ class FanPage(Gtk.Box):
         if self._block_sync:
             return # if programmatic UI update, do nothing
         self._block_sync = True
-        GLib.timeout_add(1500, self._unblock_sync)
+        block_ms = 3000 if mode == "custom" else 1500
+        GLib.timeout_add(block_ms, self._unblock_sync)
 
         if self.service:
             try:
