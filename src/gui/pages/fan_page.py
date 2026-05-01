@@ -16,6 +16,9 @@ from widgets.fan_curve import FanCurveWidget
 import cairo
 import math
 
+DEFAULT_MODE_SYNC_DELAY_MS = 1500
+CUSTOM_MODE_SYNC_DELAY_MS = 3000
+
 class FanSparkline(Gtk.DrawingArea):
     def __init__(self, color, history_len=60):
         super().__init__()
@@ -973,7 +976,7 @@ class FanPage(Gtk.Box):
         if self._block_sync:
             return # if programmatic UI update, do nothing
         self._block_sync = True
-        block_ms = 3000 if mode == "custom" else 1500
+        block_ms = CUSTOM_MODE_SYNC_DELAY_MS if mode == "custom" else DEFAULT_MODE_SYNC_DELAY_MS
         GLib.timeout_add(block_ms, self._unblock_sync)
 
         if self.service:
