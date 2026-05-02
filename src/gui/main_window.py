@@ -1982,16 +1982,16 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         self.home_page = self._build_home_page()
 
         # Pages
-        self.dashboard_page = DashboardPage(service=self.service, on_navigate=self._navigate)
-        self.fan_page        = FanPage(service=self.service, on_profile_change=self._on_profile_mode_changed)
-        self.lighting_page   = LightingPage(service=self.service)
-        self.keyboard_page   = KeyboardPage(service=self.service)
-        self.mux_page        = MUXPage(service=self.service)
+        self.dashboard_page = DashboardPage(services=None, on_navigate=self._navigate)
+        self.fan_page        = FanPage(service=None, on_profile_change=self._on_profile_mode_changed)
+        self.lighting_page   = LightingPage(service=None)
+        self.keyboard_page   = KeyboardPage(service=None)
+        self.mux_page        = MUXPage(service=None)
         self.settings_page   = SettingsPage(
             on_theme_change=self._on_theme_change,
             on_lang_change=self._on_lang_change,
             on_temp_unit_change=self._on_temp_unit_change,
-            service=self.service,
+            service=None,
         )
 
         self.stack.add_named(self.home_page, "home")
@@ -3019,16 +3019,16 @@ class HPManagerWindow(Gtk.ApplicationWindow):
                     self.stack.remove(child)
 
             self.home_page = self._build_home_page()
-            self.dashboard_page = DashboardPage(service=self.service, on_navigate=self._navigate)
-            self.fan_page        = FanPage(service=self.service, on_profile_change=self._on_profile_mode_changed)
-            self.lighting_page   = LightingPage(service=self.service)
-            self.keyboard_page   = KeyboardPage(service=self.service)
-            self.mux_page        = MUXPage(service=self.service)
+            self.dashboard_page = DashboardPage(services=None, on_navigate=self._navigate)
+            self.fan_page        = FanPage(service=None, on_profile_change=self._on_profile_mode_changed)
+            self.lighting_page   = LightingPage(service=None)
+            self.keyboard_page   = KeyboardPage(service=None)
+            self.mux_page        = MUXPage(service=None)
             self.settings_page   = SettingsPage(
                 on_theme_change=self._on_theme_change,
                 on_lang_change=self._on_lang_change,
                 on_temp_unit_change=self._on_temp_unit_change,
-                service=self.service,
+                service=None,
             )
 
             self.stack.add_named(self.home_page, "home")
