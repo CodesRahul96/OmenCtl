@@ -290,6 +290,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         self._back_button_floating = False
         self._scroll_adjustment = None
         self._scroll_adjustment_handler = 0
+        self._load_config()
         self.page_titles = {
             "dashboard": T("dashboard"),
             "fan": T("fan"),
@@ -298,8 +299,6 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             "mux": "MUX",
             "settings": T("settings"),
         }
-
-        self._load_config()
 
         self._apply_theme_preference()
 
