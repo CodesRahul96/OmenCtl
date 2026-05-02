@@ -1,5 +1,5 @@
 
- # OMEN Command Center for Linux v1.3.5 #
+ # OMEN Command Center for Linux v1.3.6 #
 <p align="center">
   <img src="images/omenapplogo.png" alt="Logo" width="250">
 
@@ -19,39 +19,38 @@
 
 **OMEN Command Center for Linux** is a native Linux application designed to unlock the full potential of HP Omen and Victus series laptops. It serves as an open-source alternative to the official OMEN Gaming Hub, providing essential controls in a modern, user-friendly interface.
 
-**New in v1.3.5:**
+---
 
-### 🛠️ What's New?
-### 🧩 Decoupled Microservices Architecture
-Instead of one large background process, the system now runs 5 independent services, each dedicated to a specific task:
+## 🛠️ What's New in v1.3.6?
 
-hpm-fan: Intelligent fan control and curve management.
-hpm-rgb: Lighting effects and animation engine.
-hpm-power: Power profiles and energy management.
-hpm-mux: GPU switching logic (prime-select, envycontrol, etc.).
-hpm-platform: System temperatures, battery info, and keyboard fixes.
-This architecture ensures that if one service (e.g., RGB) fails, critical system functions like fan control or MUX switching continue to work uninterrupted.
+### 🔧 Critical Bug Fixes
+- **Fixed GUI not launching** after upgrading from v1.3.0 to v1.3.5. The service architecture transition left stale references that prevented the interface from starting.
+- **Fixed Fan Page temperature/power profile display**: The fan page's background monitor was calling `GetSystemInfo()` and `GetPowerProfile()` on the wrong service, resulting in 0°C readings and non-functional power profile buttons.
+- **Fixed language switch disconnection**: Switching language destroyed all pages but never reconnected daemon services, leaving the app fully offline until restart.
+- **Improved debug diagnostics**: The debug console now checks all 5 microservices (`hpm-fan`, `hpm-rgb`, `hpm-power`, `hpm-mux`, `hpm-platform`) instead of only one.
 
-### ⚡ Maximum Performance & Minimum Resource Usage
-RGB Engine: When using a static color, the engine now enters a deep sleep using Event.wait(), consuming 0% CPU.
-Smart GPU Monitoring: The service now checks the Nvidia GPU's power state (suspended) before polling. It will not force-wake the dGPU, significantly extending battery life.
-Dynamic Backoff: Polling intervals automatically expand when system values remain unchanged, further reducing background overhead.
+### 🧩 Architecture (since v1.3.5)
+The system runs **5 independent microservices**, each dedicated to a specific task:
+
+| Service | Responsibility |
+|---------|---------------|
+| `hpm-fan` | Fan control, curve management, mode switching |
+| `hpm-rgb` | RGB keyboard lighting, effects engine |
+| `hpm-power` | Power profiles (eco / balanced / performance) |
+| `hpm-mux` | GPU mode switching (envycontrol, supergfxctl, prime-select) |
+| `hpm-platform` | System temperatures, battery info, keyboard fixes |
+
+This architecture ensures that if one service (e.g., RGB) fails, critical functions like fan control or GPU switching continue uninterrupted.
+
+### ⚡ Performance Highlights (since v1.3.5)
+- **RGB Engine**: Static color mode enters deep sleep using `Event.wait()`, consuming 0% CPU.
+- **Smart GPU Monitoring**: Checks Nvidia GPU power state before polling — won't force-wake the dGPU, extending battery life.
+- **Dynamic Backoff**: Polling intervals expand when system values remain unchanged.
+
 ### 🎮 GPU TGP 80W Cap Mitigation (HP Omen Max 16)
-The chronic issue in mainline kernels (v7.0+) that caused the GPU power to be capped at 80W on certain Omen models (specifically 8D41) has been fixed. Thanks to a patch provided by xcellsior, the unnecessary firmware writes at probe time are now gated, allowing your GPU to reach its full TGP!
+The chronic issue in mainline kernels (v7.0+) that capped GPU power at 80W on certain Omen models (board `8D41`) has been fixed. Thanks to a patch by **xcellsior**, unnecessary firmware writes at probe time are now gated.
 
-### 🔄 Refined Installation & Update Experience
-Due to the major architectural change, you must use the updater script: sudo ./setup.sh update to transition to this version.
-The installer now prompts you before installing the "Custom DKMS Driver." (Kernel 7.0+ users with working out-of-the-box fan control can safely skip this).
-### ⚠️ Important Update Instructions
-If you are upgrading from an older version, please run the following commands in your terminal to cleanly remove old service artifacts and register the new microservices:
-
-```bash
-cd OmenCommandCenterforLinux
-git pull
-sudo ./setup.sh update
-```
-
-
+---
 
 ## ✨ Features
 
@@ -59,28 +58,29 @@ sudo ./setup.sh update
 - **4-Zone Control**: Customize colors for different keyboard zones.
 - **Effects**: Static, Breathing, Wave, Cycle.
 - **Brightness & Speed**: Adjustable parameters for dynamic effects.
-- **Low-CPU Wave Engine**: On tested systems, wave mode CPU usage dropped from ~22-28% average to ~2% average in stress conditions.
+- **Low-CPU Wave Engine**: Wave mode CPU usage dropped from ~22-28% to ~2% in stress conditions.
 
 ### 📊 System Dashboard
-- **Real-time Monitoring**: CPU/GPU temperatures and Fan speeds.
+- **Real-time Monitoring**: CPU/GPU temperatures, fan speeds, battery health.
 - **Performance Profiles**: One-click power profile switching (requires `power-profiles-daemon`).
 
 ### 🌪️ Fan Control
-- **Standard Mode**: Intelligent software-controlled fan curve for balanced noise/performance.
+- **Standard Mode**: EC-controlled automatic fan management.
 - **Max Mode**: Forces fans to maximum speed for intensive tasks.
 - **Custom Mode**: Drag-and-drop curve editor to create your own fan profiles.
 
 ### 🎮 GPU MUX Switch (BETA)
 - Switch between **Hybrid**, **Discrete**, and **Integrated** modes.
 - Backend can be selected from **Settings → GPU / MUX**.
-- Auto mode now prefers `envycontrol` / `supergfxctl` / `prime-select` before HP WMI direct.
-- ⚠️ Some hardware/BIOS combinations may still require reboot or vendor-specific tooling behavior.
+- Auto mode prefers `envycontrol` / `supergfxctl` / `prime-select` before HP WMI direct.
+- ⚠️ Some hardware/BIOS combinations may require a reboot.
 
 ### ⌨️ Desktop Shortcuts (Recommended)
- To minimize background resource usage, we have removed the active OMEN Key listener daemon. We highly recommend creating a **Custom Shortcut** in your Desktop Environment settings (GNOME, KDE, etc.):
+ To minimize background resource usage, we recommend creating a **Custom Shortcut** in your Desktop Environment settings (GNOME, KDE, etc.):
  - **Command**: `hp-manager`
- - **Shortcut Key**: Your **OMEN Key** (detected as `KEY_PROG2`) or any preferred key combinations.
- This provides a much more responsive experience compared to a background listener thread.
+ - **Shortcut Key**: Your **OMEN Key** (detected as `KEY_PROG2`) or any preferred key combination.
+
+---
 
 ## 🚀 Installation
 
@@ -105,14 +105,17 @@ Installation Warning ⚠️: We recommend restarting your computer after install
 
 ### Updating
 
-**⚠️ IMPORTANT for v1.3.5 Updates:** Because the architecture changed from a single monolithic daemon to a microservices architecture, you **must** use the updater script to cleanly remove the old services and install the new ones.
+```bash
+cd OmenCommandCenterforLinux
+git pull
+sudo ./setup.sh update
+```
 
-1. `cd OmenCommandCenterforLinux`
-2. `sudo ./setup.sh update`
+> ⚠️ **Upgrading from v1.3.0 or earlier?** The architecture changed from a single monolithic daemon to microservices. You **must** use `sudo ./setup.sh update` to cleanly remove old services and install the new ones.
 
 ### Script Layout
 
-Maintenance scripts are now organized under:
+Maintenance scripts are organized under:
 
 - `scripts/fixes/`
 - `scripts/diagnostics/`
@@ -127,11 +130,10 @@ The installer will automatically:
 1. Detect your package manager and install dependencies.
 2. Detect your kernel version and install the appropriate driver:
    - **Kernel ≥ 7.0**: Only installs `hp-rgb-lighting` (RGB). Fan control is provided by the stock `hp-wmi` module.
-     - **Exception**: OMEN Max 16 board `8D41` is forced to the custom `hp-wmi` path due stock probe incompatibility.
+     - **Exception**: OMEN Max 16 board `8D41` is forced to the custom `hp-wmi` path due to stock probe incompatibility.
    - **Kernel < 7.0**: Installs both the custom `hp-wmi` driver (backported) and `hp-rgb-lighting`.
 3. Install the daemon and GUI components.
-4. Set up system services.
-5. Provide a troubleshooting guide if issues occur.
+4. Set up the 5 microservices.
 
 ## 🗑️ Uninstallation
 
@@ -155,12 +157,12 @@ sudo ./setup.sh uninstall
 ## 👨‍💻 Credits & Acknowledgments
 - **Lead Developer**: [yunusemreyl](https://github.com/yunusemreyl)
 - **Contributors**: [ja4e](https://github.com/ja4e), [babyinlinux](https://github.com/babyinlinux), [entharia](https://github.com/entharia) 
-- **Kernel Module Development**: Special thanks to **[TUXOV](https://github.com/TUXOV/hp-wmi-fan-and-backlight-control)** for the `hp-wmi-fan-and-backlight-control` driver, which makes fan control possible. Also thanks to **xcellsior** for the Nvidia Dynamic Boost 80W cap mitigation patch.
+- **Kernel Module Development**: Special thanks to **[TUXOV](https://github.com/TUXOV/hp-wmi-fan-and-backlight-control)** for the `hp-wmi-fan-and-backlight-control` driver. Also thanks to **xcellsior** for the Nvidia Dynamic Boost 80W cap mitigation patch.
 
 ## ⚖️ Legal Disclaimer
 This tool is an independent open-source project developed by **yunusemreyl**.
 It is **NOT** affiliated with or endorsed by **Hewlett-Packard (HP)**.
-The software is provided “as is”, without warranty of any kind.
+The software is provided "as is", without warranty of any kind.
 
 ---
 *Developed with ❤️ by yunusemreyl*

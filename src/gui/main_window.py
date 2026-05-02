@@ -55,7 +55,7 @@ from pages.settings_page import SettingsPage
 from pages.dashboard_page import DashboardPage
 from pages.keyboard_page import KeyboardPage
 
-APP_VERSION = "1.3.5"
+APP_VERSION = "1.3.6"
 CONFIG_FILE      = os.path.expanduser("~/.config/hp-manager.toml")
 CONFIG_FILE_JSON = os.path.expanduser("~/.config/hp-manager.json")
 _LAUNCHER_REFRESH_MS = 5000
@@ -270,7 +270,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
 
         self.app_theme = "dark"
         self.temp_unit = "C"
-        self.service    = None
+        self.services   = {}
         self.ready      = False
         self._rebuilding = False
         self._launcher_cards = {}
@@ -2605,6 +2605,8 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             self.ready = True
             self.dashboard_page.set_services(self.services)
             self.fan_page.set_service(self.services["fan"])
+            self.fan_page.set_platform_service(self.services["platform"])
+            self.fan_page.set_power_service(self.services["power"])
             self.lighting_page.set_service(self.services["rgb"])
             if hasattr(self, 'keyboard_page'):
                 self.keyboard_page.set_service(self.services["platform"])
@@ -2753,8 +2755,9 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             return True
 
     def _fetch_launcher_metrics(self):
+        services = getattr(self, "services", None)
         data = {
-            "ok": bool(self.service),
+            "ok": bool(services and any(services.values())),
             "sys": {},
             "fan": {},
             "pp": {},
@@ -2764,25 +2767,30 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             "gpu_pct": None,
         }
         try:
-            if self.service:
+            if services:
                 try:
-                    data["sys"] = json.loads(self.service.GetSystemInfo())
+                    if services.get("platform"):
+                        data["sys"] = json.loads(services["platform"].GetSystemInfo())
                 except Exception:
                     pass
                 try:
-                    data["fan"] = json.loads(self.service.GetFanInfo())
+                    if services.get("fan"):
+                        data["fan"] = json.loads(services["fan"].GetFanInfo())
                 except Exception:
                     pass
                 try:
-                    data["pp"] = json.loads(self.service.GetPowerProfile())
+                    if services.get("power"):
+                        data["pp"] = json.loads(services["power"].GetPowerProfile())
                 except Exception:
                     pass
                 try:
-                    data["light"] = json.loads(self.service.GetState())
+                    if services.get("rgb"):
+                        data["light"] = json.loads(services["rgb"].GetState())
                 except Exception:
                     pass
                 try:
-                    data["gpu"] = json.loads(self.service.GetGpuInfo())
+                    if services.get("mux"):
+                        data["gpu"] = json.loads(services["mux"].GetGpuInfo())
                 except Exception:
                     pass
 
@@ -3038,6 +3046,18 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             self.stack.add_named(self.keyboard_page,   "keyboard")
             self.stack.add_named(self.mux_page,        "mux")
             self.stack.add_named(self.settings_page,   "settings")
+
+            # Reconnect daemon services to the freshly-created pages
+            services = getattr(self, "services", None)
+            if services:
+                self.dashboard_page.set_services(services)
+                self.fan_page.set_service(services.get("fan"))
+                self.fan_page.set_platform_service(services.get("platform"))
+                self.fan_page.set_power_service(services.get("power"))
+                self.lighting_page.set_service(services.get("rgb"))
+                self.keyboard_page.set_service(services.get("platform"))
+                self.mux_page.set_service(services.get("mux"))
+                self.settings_page.set_service(services.get("mux"))
 
             self.fan_page.set_dark(self.app_theme == "dark")
             self.fan_page.set_temp_unit(self.temp_unit)

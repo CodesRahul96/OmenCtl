@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fan & Power Control Page — v1.3.5 with i18n.
+Fan & Power Control Page — v1.3.6 with i18n.
 """
 import os, json, subprocess, shutil, glob, threading, time
 import gi
@@ -239,9 +239,9 @@ def _find_hwmon_by_name(name):
 
 
 class SystemMonitor(threading.Thread):
-    def __init__(self, service_provider):
+    def __init__(self, services_provider):
         super().__init__(daemon=True)
-        self.service_provider = service_provider
+        self.services_provider = services_provider
         self.running = True
         self._active_event = threading.Event()
         self._active_event.set()
@@ -277,20 +277,27 @@ class SystemMonitor(threading.Thread):
 
             c, g = 0.0, 0.0
             fi, pp, si = {}, {}, {}
-            service = self.service_provider()
-            
-            if service:
-                try: 
-                    si = json.loads(service.GetSystemInfo())
-                    c = si.get("cpu_temp", 0.0)
-                    g = si.get("gpu_temp", 0.0)
-                except Exception: pass
-                
-                try: fi = json.loads(service.GetFanInfo())
-                except Exception: pass
-                
-                try: pp = json.loads(service.GetPowerProfile())
-                except Exception: pass
+            services = self.services_provider()
+
+            if services:
+                platform_svc = services.get("platform")
+                fan_svc = services.get("fan")
+                power_svc = services.get("power")
+
+                if platform_svc:
+                    try:
+                        si = json.loads(platform_svc.GetSystemInfo())
+                        c = si.get("cpu_temp", 0.0)
+                        g = si.get("gpu_temp", 0.0)
+                    except Exception: pass
+
+                if fan_svc:
+                    try: fi = json.loads(fan_svc.GetFanInfo())
+                    except Exception: pass
+
+                if power_svc:
+                    try: pp = json.loads(power_svc.GetPowerProfile())
+                    except Exception: pass
 
             sensors = []
             if self._collect_sensors:
@@ -380,7 +387,9 @@ class FanPage(Gtk.Box):
         super().__init__()
         self.set_orientation(Gtk.Orientation.VERTICAL)
         self.set_spacing(0)
-        self.service = service
+        self.service = service          # fan service proxy
+        self._platform_svc = None       # platform service proxy
+        self._power_svc = None          # power service proxy
         self.on_profile_change = on_profile_change
         self.fan_mode = "standard" # Default to standard, will sync later
         self._curve_timer = None
@@ -394,7 +403,11 @@ class FanPage(Gtk.Box):
         self._block_sync = False  # Prevents UI reverting due to stale cached data
         self._profile_card_boxes = []
 
-        self.monitor = SystemMonitor(lambda: self.service)
+        self.monitor = SystemMonitor(lambda: {
+            "fan": self.service,
+            "platform": self._platform_svc,
+            "power": self._power_svc,
+        })
         self.monitor.start()
 
         self._build_ui()
@@ -438,6 +451,12 @@ class FanPage(Gtk.Box):
 
     def set_service(self, service):
         self.service = service
+
+    def set_platform_service(self, service):
+        self._platform_svc = service
+
+    def set_power_service(self, service):
+        self._power_svc = service
 
     def set_temp_unit(self, unit):
         self.temp_unit = unit
@@ -942,9 +961,9 @@ class FanPage(Gtk.Box):
         self._apply_profile_theme(profile)
         self._block_sync = True
         GLib.timeout_add(1500, self._unblock_sync)
-        if self.service:
+        if self._power_svc:
             try:
-                self.service.SetPowerProfile(profile)
+                self._power_svc.SetPowerProfile(profile)
                 self.pp_status.set_label(f"{T('active_profile')}: {profile}")
             except Exception as e:
                 self.pp_status.set_label(f"{T('error')}: {e}")

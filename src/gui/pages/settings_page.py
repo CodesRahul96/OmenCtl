@@ -19,7 +19,7 @@ def T(k):
     return _T(k)
 
 
-APP_VERSION = "1.3.5"
+APP_VERSION = "1.3.6"
 GITHUB_REPO = "yunusemreyl/OmenCommandCenterforLinux"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
@@ -769,13 +769,17 @@ class SettingsPage(Gtk.Box):
 
         # 7. Service Status
         out.append("\nService Status:")
-        try:
-            status = subprocess.check_output(["systemctl", "status", "com.yyl.hpmanager.service"], stderr=subprocess.STDOUT, timeout=2).decode(errors='ignore')
-            lines = status.splitlines()
-            for i in range(min(5, len(lines))):
-                out.append(f"  {lines[i].strip()}")
-        except Exception as e:
-            out.append(f"  Error: {e}")
+        for svc_name in ("hpm-fan", "hpm-rgb", "hpm-power", "hpm-mux", "hpm-platform"):
+            try:
+                status = subprocess.check_output(
+                    ["systemctl", "is-active", f"{svc_name}.service"],
+                    stderr=subprocess.DEVNULL, timeout=2
+                ).decode(errors='ignore').strip()
+                out.append(f"  {svc_name}: {status}")
+            except subprocess.CalledProcessError as e:
+                out.append(f"  {svc_name}: {e.output.decode(errors='ignore').strip() if e.output else 'inactive'}")
+            except Exception as e:
+                out.append(f"  {svc_name}: Error ({e})")
 
         # 8. Kernel Logs (dmesg)
         out.append("\nKernel Logs:")
