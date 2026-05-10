@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from common.logging_config import setup_logging
 from common.config import ServiceConfig
 from common.dbus_helpers import run_service
-from common.sysfs import sysfs_exists, sysfs_write
+from common.sysfs import sysfs_exists, sysfs_read, sysfs_read_str, sysfs_write
 
 from pydbus import SystemBus
 
@@ -87,9 +87,36 @@ class PowerProfileController:
                     return "performance"
                 return "balanced"
             # omen_direct
-            return "balanced"
+            return self._get_omen_direct_active()
         except Exception:
             return "balanced"
+
+    def _get_omen_direct_active(self):
+        for path in (
+            "/sys/devices/platform/hp-wmi/thermal_profile",
+            "/sys/devices/platform/hp-omen/thermal_profile",
+        ):
+            if not sysfs_exists(path):
+                continue
+            val = sysfs_read(path, 0)
+            if val == 1:
+                return "performance"
+            return "balanced"
+
+        for path in (
+            "/sys/firmware/acpi/platform_profile",
+            "/sys/devices/platform/hp-wmi/platform_profile",
+        ):
+            if not sysfs_exists(path):
+                continue
+            raw = sysfs_read_str(path, "balanced").strip().lower()
+            if "performance" in raw:
+                return "performance"
+            if raw in ("low-power", "low_power", "quiet", "cool", "power-saver"):
+                return "power-saver"
+            return "balanced"
+
+        return "balanced"
 
     def set_profile(self, profile):
         if not self.available:
