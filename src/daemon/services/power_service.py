@@ -110,9 +110,10 @@ class PowerProfileController:
             if not sysfs_exists(path):
                 continue
             raw = sysfs_read_str(path, "balanced").strip().lower()
+            normalized = raw.replace("_", "-")
             if "performance" in raw:
                 return "performance"
-            if raw in ("low-power", "low_power", "quiet", "cool", "power-saver"):
+            if normalized in ("low-power", "quiet", "cool", "power-saver"):
                 return "power-saver"
             return "balanced"
 
