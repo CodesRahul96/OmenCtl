@@ -209,8 +209,7 @@ class PowerProfileController:
 
     def _sync_kernel_gpu_power(self, profile):
         """Trigger TGP and PPAB via the patched hp-wmi driver."""
-        tgp_path = None
-        ppab_path = None
+        tgp_path = ppab_path = None
         for base in ("/sys/devices/platform/hp-wmi", "/sys/devices/platform/hp-omen"):
             candidate_tgp = f"{base}/gpu_tgp"
             candidate_ppab = f"{base}/gpu_ppab"
@@ -223,26 +222,21 @@ class PowerProfileController:
 
         try:
             if profile == "performance":
-                tgp_ok = sysfs_write(tgp_path, "1")
-                ppab_ok = sysfs_write(ppab_path, "1")
-                if tgp_ok and ppab_ok:
-                    logger.info("Kernel GPU Power: TGP=Enabled, PPAB=Enabled")
-                else:
-                    logger.warning("Failed to apply Kernel GPU power profile: %s", profile)
+                tgp_val, ppab_val = "1", "1"
+                success_msg = "Kernel GPU Power: TGP=Enabled, PPAB=Enabled"
             elif profile == "balanced":
-                tgp_ok = sysfs_write(tgp_path, "0")
-                ppab_ok = sysfs_write(ppab_path, "1")
-                if tgp_ok and ppab_ok:
-                    logger.info("Kernel GPU Power: TGP=Disabled, PPAB=Enabled")
-                else:
-                    logger.warning("Failed to apply Kernel GPU power profile: %s", profile)
+                tgp_val, ppab_val = "0", "1"
+                success_msg = "Kernel GPU Power: TGP=Disabled, PPAB=Enabled"
             else: # power-saver / quiet / eco
-                tgp_ok = sysfs_write(tgp_path, "0")
-                ppab_ok = sysfs_write(ppab_path, "0")
-                if tgp_ok and ppab_ok:
-                    logger.info("Kernel GPU Power: TGP=Disabled, PPAB=Disabled")
-                else:
-                    logger.warning("Failed to apply Kernel GPU power profile: %s", profile)
+                tgp_val, ppab_val = "0", "0"
+                success_msg = "Kernel GPU Power: TGP=Disabled, PPAB=Disabled"
+
+            tgp_ok = sysfs_write(tgp_path, tgp_val)
+            ppab_ok = sysfs_write(ppab_path, ppab_val)
+            if tgp_ok and ppab_ok:
+                logger.info(success_msg)
+            else:
+                logger.warning("Failed to apply Kernel GPU power profile: %s", profile)
         except Exception as e:
             logger.warning("Failed to sync Kernel GPU power: %s", e)
 
