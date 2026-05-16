@@ -1183,6 +1183,8 @@ static int victus_s_gpu_thermal_profile_set(bool ctgp_enable,
 					    bool ppab_enable,
 					    u8 dstate);
 
+static bool is_victus_s_thermal_profile(void);
+
 static ssize_t gpu_tgp_show(struct device *dev, struct device_attribute *attr,
 			    char *buf)
 {
