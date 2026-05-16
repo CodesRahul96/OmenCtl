@@ -71,7 +71,7 @@ class PowerServiceKernelGpuPowerSyncTest(unittest.TestCase):
              mock.patch.object(power_service.logger, "warning") as warn_mock:
             controller._sync_kernel_gpu_power("balanced")
 
-        warn_mock.assert_any_call("Failed to apply Kernel GPU power profile: balanced")
+        warn_mock.assert_any_call("Failed to apply Kernel GPU power profile: %s", "balanced")
 
 
 if __name__ == "__main__":

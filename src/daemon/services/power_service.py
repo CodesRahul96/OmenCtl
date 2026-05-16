@@ -228,21 +228,21 @@ class PowerProfileController:
                 if tgp_ok and ppab_ok:
                     logger.info("Kernel GPU Power: TGP=Enabled, PPAB=Enabled")
                 else:
-                    logger.warning("Failed to apply Kernel GPU power profile: performance")
+                    logger.warning("Failed to apply Kernel GPU power profile: %s", profile)
             elif profile == "balanced":
                 tgp_ok = sysfs_write(tgp_path, "0")
                 ppab_ok = sysfs_write(ppab_path, "1")
                 if tgp_ok and ppab_ok:
                     logger.info("Kernel GPU Power: TGP=Disabled, PPAB=Enabled")
                 else:
-                    logger.warning("Failed to apply Kernel GPU power profile: balanced")
+                    logger.warning("Failed to apply Kernel GPU power profile: %s", profile)
             else: # power-saver / quiet / eco
                 tgp_ok = sysfs_write(tgp_path, "0")
                 ppab_ok = sysfs_write(ppab_path, "0")
                 if tgp_ok and ppab_ok:
                     logger.info("Kernel GPU Power: TGP=Disabled, PPAB=Disabled")
                 else:
-                    logger.warning("Failed to apply Kernel GPU power profile: power-saver")
+                    logger.warning("Failed to apply Kernel GPU power profile: %s", profile)
         except Exception as e:
             logger.warning("Failed to sync Kernel GPU power: %s", e)
 
