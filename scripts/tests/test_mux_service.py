@@ -28,6 +28,12 @@ class MUXControllerTest(unittest.TestCase):
         with mock.patch.object(mux_service.subprocess, "check_output", return_value=b"Current mode: Hybrid\n"):
             self.assertEqual(ctrl.get_mode(), "hybrid")
 
+    def test_normalize_mode_handles_nvidia_offload_as_hybrid(self):
+        self.assertEqual(
+            mux_service.MUXController._normalize_mode("nvidia-offload"),
+            "hybrid",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

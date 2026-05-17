@@ -144,14 +144,16 @@ class PowerProfileController:
                 for token in choices_raw.split()
                 if token.strip("[]")
             }
-            target = "balanced"
-            for candidate in target_candidates:
-                if not choices or candidate in choices:
-                    target = candidate
-                    break
-            if sysfs_write(path, target):
-                return True
-            return False
+            if choices:
+                candidates = [candidate for candidate in target_candidates if candidate in choices]
+                if not candidates and "balanced" in choices:
+                    candidates = ["balanced"]
+            else:
+                candidates = list(target_candidates)
+
+            for target in candidates:
+                if sysfs_write(path, target):
+                    return True
 
         thermal_val = {"power-saver": "0", "balanced": "0", "performance": "1"}.get(
             profile, "0"
@@ -164,7 +166,6 @@ class PowerProfileController:
                 continue
             if sysfs_write(path, thermal_val):
                 return True
-            return False
         return False
 
     def set_profile(self, profile):
