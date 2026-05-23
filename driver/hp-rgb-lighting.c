@@ -94,7 +94,7 @@ static int hp_wmi_perform_query(int query, enum hp_wmi_command command,
 
   actual_insize = max(insize, 128);
   bios_args_size = struct_size(args, data, actual_insize);
-  args = kmalloc(bios_args_size, GFP_KERNEL);
+  args = kzalloc(bios_args_size, GFP_KERNEL);
   if (!args)
     return -ENOMEM;
 
@@ -112,7 +112,23 @@ static int hp_wmi_perform_query(int query, enum hp_wmi_command command,
     goto out_free;
 
   obj = output.pointer;
-  if (!obj || obj->type != ACPI_TYPE_BUFFER) {
+  if (!obj) {
+    ret = -EINVAL;
+    goto out_free;
+  }
+
+  if (obj->type != ACPI_TYPE_BUFFER) {
+    pr_warn("query 0x%x returned an invalid object type 0x%x\n",
+            query, obj->type);
+    ret = -EINVAL;
+    goto out_free;
+  }
+
+  /* Validate buffer before any dereference */
+  if (!obj->buffer.pointer ||
+      obj->buffer.length < sizeof(*bios_return)) {
+    pr_warn("query 0x%x returned invalid buffer (ptr=%p len=%u)\n",
+            query, obj->buffer.pointer, obj->buffer.length);
     ret = -EINVAL;
     goto out_free;
   }
