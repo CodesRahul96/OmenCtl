@@ -19,35 +19,17 @@
 
 **OMEN Command Center for Linux** is a native Linux application designed to unlock the full potential of HP Omen and Victus series laptops. It serves as an open-source alternative to the official OMEN Gaming Hub, providing essential controls in a modern, user-friendly interface.
 
----
-### ⚠️ Security Notice
-### Important: This project is currently undergoing a security audit and refactoring to address potential vulnerabilities (including buffer handling and D-Bus policies). Until these improvements are merged, please do not use this project in production or critical environments.
+## 🛠️ What's New in v1.4.0?
 
-### If you wish to contribute to fixing these issues, Pull Requests are highly welcome as I continue my learning and development journey.
-## 🛠️ What's New in v1.3.7?
+### 🛡️ Enterprise-Grade Security Architecture
+The application has undergone a comprehensive security audit and refactoring:
+- **Kernel Memory Safety**: Fixed ACPI buffer overflows and uninitialized memory leaks in `hp-wmi` and `hp-rgb-lighting`.
+- **Race Condition Prevention**: Introduced global mutexes to prevent WMI command clobbering between kernel modules.
+- **Strict Least-Privilege**: D-Bus policies now restrict hardware write operations exclusively to `wheel`, `sudo`, and `adm` groups.
+- **Systemd Sandboxing**: Microservices now run without `CAP_SYS_RAWIO`, with protected network and home directories.
 
-### 🚀 New: `omen` Command Line Interface (CLI)
-Introducing a powerful new CLI for terminal lovers. Control your laptop's core features without opening the GUI.
-```bash
-omen fan max          # Set fans to max speed
-omen fan auto         # Restore auto fan control
-omen mode performance # Enable high-performance mode (lifts 80W cap)
-omen mode balanced    # Switch to balanced profile
-omen mode quiet       # Switch to quiet/power-saver mode
-omen mux hybrid       # Switch to Hybrid GPU mode
-omen mux discrete     # Switch to Discrete GPU mode
-```
-
-### ⚡ GPU Power Limit (80W Cap) Resolution
-The 80W power limit issue on NVIDIA GPUs is now fully resolved.
-- **Kernel-level TGP & PPAB Control**: Added support for lifting power caps on OMEN/Victus laptops via the patched `hp-wmi` driver.
-- **Automatic Sync**: Switching to "Performance" mode now automatically triggers both NVIDIA-SMI limits and kernel-level power expansion (lifting the 80W cap to 140W+ on supported hardware).
-
-### 🔧 Driver & Stability Improvements
-- **Fixed INIT_DELAYED_WORK Race Condition**: Prevented potential kernel crashes during module initialization.
-- **Fixed TOCTOU Vulnerabilities**: Synchronized GPU power state updates in the driver for better data integrity.
-- **Improved NULL-Safety**: Hardened the `hp-wmi` driver against unexpected WMI responses.
-- **Cleaned up Fan Fallbacks**: Improved reliability on newer Victus-S series boards.
+### 📚 Comprehensive Documentation
+- Added a full `documentation/` suite covering Architecture, Code Structure, and detailed driver internals.
 
 ---
 
