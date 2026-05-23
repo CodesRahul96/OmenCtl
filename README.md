@@ -138,7 +138,7 @@ sudo ./setup.sh uninstall
 
 ## 👨‍💻 Credits & Acknowledgments
 - **Lead Developer**: [yunusemreyl](https://github.com/yunusemreyl)
-- **Kernel Module Development**: Special thanks to **[TUXOV](https://github.com/TUXOV/hp-wmi-fan-and-backlight-control)** for the `hp-wmi-fan-and-backlight-control` driver. Also thanks to **xcellsior** for the Nvidia Dynamic Boost 80W cap mitigation patch.
+- **Kernel Module Development**: Special thanks to **[TUXOV](https://github.com/TUXOV/hp-wmi-fan-and-backlight-control)** for the `hp-wmi-fan-and-backlight-control` driver. Also thanks to **@xcellsior** for the Nvidia Dynamic Boost 80W cap mitigation patch.
 
 ## ⚖️ Legal Disclaimer
 This tool is an independent open-source project developed by **yunusemreyl**.
