@@ -235,6 +235,7 @@ class PlatformService:
         return "OK"
 
     def _write_hwdb_rules(self, prtsc, f1):
+        logger.info("Writing hwdb rules: prtsc=%s, f1=%s", prtsc, f1)
         hwdb_path = "/etc/udev/hwdb.d/90-hp-keyboard-fixes.hwdb"
         if not prtsc and not f1:
             if os.path.exists(hwdb_path):
@@ -271,11 +272,14 @@ class PlatformService:
             logger.error("Failed to write hwdb rules: %s", e)
 
     def CleanMemory(self):
+        logger.info("CleanMemory called")
         try:
             subprocess.run(["sync"], check=True, timeout=5)
             with open("/proc/sys/vm/drop_caches", "w") as f: f.write("3\n")
+            logger.info("Memory cache cleared successfully")
             return "OK"
         except Exception as e:
+            logger.error("CleanMemory failed: %s", e)
             return f"Error: {e}"
 
     def Ping(self):

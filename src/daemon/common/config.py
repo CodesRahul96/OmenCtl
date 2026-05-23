@@ -27,6 +27,11 @@ import os
 import threading
 from typing import Any, Dict, Optional
 
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # type: ignore[assignment]  # Windows fallback
+
 logger = logging.getLogger("hp-manager.config")
 
 CONFIG_DIR = "/etc/hp-manager"
@@ -115,7 +120,13 @@ class ServiceConfig:
         """
         try:
             with open(path) as f:
-                data = json.load(f)
+                if fcntl is not None:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+                try:
+                    data = json.load(f)
+                finally:
+                    if fcntl is not None:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
             if not isinstance(data, dict):
                 return
 
@@ -133,12 +144,19 @@ class ServiceConfig:
             logger.error("[%s] State load error: %s", self._service, exc)
 
     def _save_unlocked(self):
-        """Write state to disk using atomic rename."""
+        """Write state to disk using atomic rename with restrictive permissions."""
         try:
             os.makedirs(CONFIG_DIR, exist_ok=True)
             tmp = self._path + ".tmp"
-            with open(tmp, "w") as f:
-                json.dump(self._state, f, indent=2)
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o640)
+            with os.fdopen(fd, "w") as f:
+                if fcntl is not None:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    json.dump(self._state, f, indent=2)
+                finally:
+                    if fcntl is not None:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
             os.replace(tmp, self._path)
         except Exception as exc:
             logger.error("[%s] State save error: %s", self._service, exc)

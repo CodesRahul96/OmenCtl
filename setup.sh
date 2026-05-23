@@ -409,7 +409,7 @@ setup_omen_key_shortcut() {
     fi
 
     local real_home
-    real_home=$(eval echo "~${real_user}")
+    real_home=$(getent passwd "$real_user" | cut -d: -f6)
 
     # Detect DE from the invoking user's session
     local de=""
@@ -444,7 +444,7 @@ _setup_omen_key_gnome() {
 
     # Read existing custom keybindings, append ours if not already present
     local existing
-    existing=$(su - "$user" -c "gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings" 2>/dev/null || echo "[]")
+    existing=$(runuser -u "$user" -- gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings 2>/dev/null || echo "[]")
 
     if echo "$existing" | grep -q "omen-key"; then
         info "Omen Key shortcut already configured in GNOME"
@@ -459,13 +459,12 @@ _setup_omen_key_gnome() {
         new_val=$(echo "$existing" | sed "s/]$/, '${omen_path}']/" )
     fi
 
-    su - "$user" -c "
-        gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \"${new_val}\"
-        gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${omen_path} name 'OMEN Command Center'
-        gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${omen_path} command 'hp-manager'
-        gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${omen_path} binding 'Launch2'
-    " 2>/dev/null && log "Omen Key shortcut set for GNOME (Launch2 → hp-manager)" \
-                   || warn "Failed to set GNOME shortcut — you can set it manually in Settings → Keyboard → Shortcuts"
+    runuser -u "$user" -- gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "${new_val}" 2>/dev/null
+    runuser -u "$user" -- gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${omen_path} name 'OMEN Command Center' 2>/dev/null
+    runuser -u "$user" -- gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${omen_path} command 'hp-manager' 2>/dev/null
+    runuser -u "$user" -- gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${omen_path} binding 'Launch2' 2>/dev/null \
+        && log "Omen Key shortcut set for GNOME (Launch2 → hp-manager)" \
+        || warn "Failed to set GNOME shortcut — you can set it manually in Settings → Keyboard → Shortcuts"
 }
 
 _setup_omen_key_kde() {
@@ -474,7 +473,7 @@ _setup_omen_key_kde() {
     local rc_file="${home}/.config/kglobalshortcutsrc"
 
     # Ensure config dir exists
-    su - "$user" -c "mkdir -p '${home}/.config'" 2>/dev/null || true
+    runuser -u "$user" -- mkdir -p "${home}/.config" 2>/dev/null || true
 
     # Check if already configured
     if [ -f "$rc_file" ] && grep -q "omen-command-center" "$rc_file" 2>/dev/null; then
@@ -491,16 +490,15 @@ _setup_omen_key_kde() {
     fi
 
     if [ -n "$kwrite" ]; then
-        su - "$user" -c "
-            ${kwrite} --file kglobalshortcutsrc --group 'omen-command-center.desktop' --key '_launch' 'Launch2,none,OMEN Command Center'
-            ${kwrite} --file kglobalshortcutsrc --group 'omen-command-center.desktop' --key '_k_friendly_name' 'OMEN Command Center'
-            if command -v qdbus6 &>/dev/null; then
-                qdbus6 org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel.reloadConfig || true
-            elif command -v qdbus &>/dev/null; then
-                qdbus org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel.reloadConfig || true
-            fi
-        " 2>/dev/null && log "Omen Key shortcut set for KDE Plasma (Launch2 → hp-manager)" \
-                       || warn "Failed to set KDE shortcut — set it in System Settings → Shortcuts"
+        runuser -u "$user" -- ${kwrite} --file kglobalshortcutsrc --group 'omen-command-center.desktop' --key '_launch' 'Launch2,none,OMEN Command Center' 2>/dev/null || true
+        runuser -u "$user" -- ${kwrite} --file kglobalshortcutsrc --group 'omen-command-center.desktop' --key '_k_friendly_name' 'OMEN Command Center' 2>/dev/null || true
+        if command -v qdbus6 &>/dev/null; then
+            runuser -u "$user" -- qdbus6 org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel.reloadConfig 2>/dev/null || true
+        elif command -v qdbus &>/dev/null; then
+            runuser -u "$user" -- qdbus org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel.reloadConfig 2>/dev/null || true
+        fi
+        log "Omen Key shortcut set for KDE Plasma (Launch2 → hp-manager)" \
+            || warn "Failed to set KDE shortcut — set it in System Settings → Shortcuts"
     else
         # Direct file write as fallback
         cat >> "$rc_file" <<'KDE_SHORTCUT'
@@ -515,7 +513,7 @@ KDE_SHORTCUT
 
     # Create the .desktop file for KDE service menu
     local desktop_dir="${home}/.local/share/applications"
-    su - "$user" -c "mkdir -p '${desktop_dir}'" 2>/dev/null || true
+    runuser -u "$user" -- mkdir -p "${desktop_dir}" 2>/dev/null || true
     cat > "${desktop_dir}/omen-command-center.desktop" <<DESKTOP
 [Desktop Entry]
 Name=OMEN Command Center
@@ -530,10 +528,9 @@ DESKTOP
 _setup_omen_key_xfce() {
     local user=$1
 
-    su - "$user" -c "
-        xfconf-query -c xfce4-keyboard-shortcuts -p '/commands/custom/XF86Launch2' -n -t string -s 'hp-manager'
-    " 2>/dev/null && log "Omen Key shortcut set for XFCE (XF86Launch2 → hp-manager)" \
-                   || warn "Failed to set XFCE shortcut — set it in Settings → Keyboard → Application Shortcuts"
+    runuser -u "$user" -- xfconf-query -c xfce4-keyboard-shortcuts -p '/commands/custom/XF86Launch2' -n -t string -s 'hp-manager' 2>/dev/null \
+        && log "Omen Key shortcut set for XFCE (XF86Launch2 → hp-manager)" \
+        || warn "Failed to set XFCE shortcut — set it in Settings → Keyboard → Application Shortcuts"
 }
 
 _setup_omen_key_cinnamon() {
@@ -541,12 +538,11 @@ _setup_omen_key_cinnamon() {
     local base_path="/org/cinnamon/desktop/keybindings/custom-keybindings"
     local omen_path="${base_path}/omen-key/"
 
-    su - "$user" -c "
-        dconf write ${omen_path}name \"'OMEN Command Center'\"
-        dconf write ${omen_path}command \"'hp-manager'\"
-        dconf write ${omen_path}binding \"['Launch2']\"
-    " 2>/dev/null && log "Omen Key shortcut set for Cinnamon (Launch2 → hp-manager)" \
-                   || warn "Failed to set Cinnamon shortcut — set it in Keyboard → Shortcuts"
+    runuser -u "$user" -- dconf write ${omen_path}name "'OMEN Command Center'" 2>/dev/null || true
+    runuser -u "$user" -- dconf write ${omen_path}command "'hp-manager'" 2>/dev/null || true
+    runuser -u "$user" -- dconf write ${omen_path}binding "['Launch2']" 2>/dev/null \
+        && log "Omen Key shortcut set for Cinnamon (Launch2 → hp-manager)" \
+        || warn "Failed to set Cinnamon shortcut — set it in Keyboard → Shortcuts"
 }
 
 _setup_omen_key_fallback() {

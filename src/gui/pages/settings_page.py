@@ -458,7 +458,12 @@ class SettingsPage(Gtk.Box):
                 try:
                     tar.extractall(path=tmp_dir, filter='data')
                 except TypeError:
-                    # Python < 3.12 doesn't support filter argument
+                    # Python < 3.12: manually validate paths to prevent traversal
+                    abs_tmp = os.path.realpath(tmp_dir)
+                    for member in tar.getmembers():
+                        member_path = os.path.realpath(os.path.join(tmp_dir, member.name))
+                        if not member_path.startswith(abs_tmp + os.sep) and member_path != abs_tmp:
+                            raise ValueError(f"Path traversal detected in archive member: {member.name}")
                     tar.extractall(path=tmp_dir)
 
             # Find the extracted directory (GitHub tarballs have a single top-level dir)
@@ -784,11 +789,24 @@ class SettingsPage(Gtk.Box):
         # 8. Kernel Logs (dmesg)
         out.append("\nKernel Logs:")
         try:
-            dmesg_cmd = "dmesg | grep -iE 'hp_wmi|wmi|hp-manager' | tail -n 10"
-            logs = subprocess.check_output(dmesg_cmd, shell=True, stderr=subprocess.DEVNULL, timeout=3).decode(errors='ignore')
+            import re as _re
+            _log_pattern = _re.compile(r'hp_wmi|wmi|hp-manager', _re.IGNORECASE)
+            try:
+                dmesg_out = subprocess.check_output(['dmesg'], stderr=subprocess.DEVNULL, timeout=3).decode(errors='ignore')
+                log_lines = [l for l in dmesg_out.splitlines() if _log_pattern.search(l)][-10:]
+                logs = '\n'.join(log_lines)
+            except Exception:
+                logs = ''
             if not logs.strip():
-                journal_cmd = "journalctl -k --no-pager | grep -iE 'hp_wmi|wmi|hp-manager' | tail -n 10"
-                logs = subprocess.check_output(journal_cmd, shell=True, stderr=subprocess.DEVNULL, timeout=3).decode(errors='ignore')
+                try:
+                    journal_out = subprocess.check_output(
+                        ['journalctl', '-k', '--no-pager'],
+                        stderr=subprocess.DEVNULL, timeout=3
+                    ).decode(errors='ignore')
+                    log_lines = [l for l in journal_out.splitlines() if _log_pattern.search(l)][-10:]
+                    logs = '\n'.join(log_lines)
+                except Exception:
+                    logs = ''
             
             if logs.strip():
                 out.append(logs.strip())

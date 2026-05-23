@@ -95,15 +95,23 @@ class MUXController:
         return self._cached_mode
 
     def set_mode(self, mode):
+        if mode not in VALID_GPU_MODES:
+            return f"Error: Invalid mode '{mode}'"
         try:
             if self.backend == "envycontrol" and self.envycontrol:
-                m = {"hybrid":"hybrid","discrete":"nvidia","integrated":"integrated"}.get(mode,mode)
+                m = {"hybrid":"hybrid","discrete":"nvidia","integrated":"integrated"}.get(mode)
+                if m is None:
+                    return f"Error: Unsupported mode '{mode}' for envycontrol"
                 subprocess.run([self.envycontrol, "-s", m], check=True, timeout=10)
             elif self.backend == "supergfxctl" and self.supergfxctl:
-                m = {"hybrid":"Hybrid","discrete":"Dedicated","integrated":"Integrated"}.get(mode,mode)
+                m = {"hybrid":"Hybrid","discrete":"Dedicated","integrated":"Integrated"}.get(mode)
+                if m is None:
+                    return f"Error: Unsupported mode '{mode}' for supergfxctl"
                 subprocess.run([self.supergfxctl, "-m", m], check=True, timeout=10)
             elif self.backend == "prime-select" and self.prime_select:
-                m = {"hybrid":"on-demand","discrete":"nvidia","integrated":"intel"}.get(mode,mode)
+                m = {"hybrid":"on-demand","discrete":"nvidia","integrated":"intel"}.get(mode)
+                if m is None:
+                    return f"Error: Unsupported mode '{mode}' for prime-select"
                 subprocess.run([self.prime_select, m], check=True, timeout=10)
             else:
                 return "No backend"

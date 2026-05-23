@@ -286,6 +286,7 @@ DKMSRGB
                 -keyout "$MOK_DIR/MOK.priv" \
                 -outform DER -out "$MOK_DIR/MOK.der" \
                 -days 36500 -subj "/CN=hp-manager-mok/" -nodes 2>/dev/null
+            chmod 600 "$MOK_DIR/MOK.priv"
         fi
 
         # Sign installed modules
@@ -316,7 +317,8 @@ DKMSRGB
         # Enrol MOK if not yet enrolled
         if mokutil --test-key "$MOK_DIR/MOK.der" 2>/dev/null | grep -qi "not enrolled"; then
             info "Enrolling MOK key..."
-            printf "yunusemreyl\nyunusemreyl\n" | mokutil --import "$MOK_DIR/MOK.der" 2>/dev/null \
+            MOK_PASSWORD=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16 || true)
+            printf "%s\n%s\n" "$MOK_PASSWORD" "$MOK_PASSWORD" | mokutil --import "$MOK_DIR/MOK.der" 2>/dev/null \
                 || warn "Failed to import MOK key."
 
             echo ""
@@ -333,7 +335,7 @@ DKMSRGB
             echo -e "${YELLOW}║  1. Select 'Enroll MOK'                                   ║${NC}"
             echo -e "${YELLOW}║  2. Select 'Continue'                                     ║${NC}"
             echo -e "${YELLOW}║  3. Select 'Yes'                                          ║${NC}"
-            echo -e "${YELLOW}║  4. Enter password: ${GREEN}yunusemreyl${YELLOW}                           ║${NC}"
+            echo -e "${YELLOW}║  4. Enter password: ${GREEN}${MOK_PASSWORD}${YELLOW}$(printf '%*s' $((27 - ${#MOK_PASSWORD})) '')║${NC}"
             echo -e "${YELLOW}║  5. Select 'Reboot'                                       ║${NC}"
             echo -e "${YELLOW}╚═══════════════════════════════════════════════════════════╝${NC}"
             echo ""

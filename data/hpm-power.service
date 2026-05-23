@@ -18,6 +18,15 @@ PrivateTmp=false
 NoNewPrivileges=true
 LockPersonality=true
 RestrictSUIDSGID=true
+ProtectSystem=strict
+ReadWritePaths=/sys /proc
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+CapabilityBoundingSet=CAP_SYS_RAWIO CAP_DAC_OVERRIDE
 
 [Install]
 WantedBy=multi-user.target
