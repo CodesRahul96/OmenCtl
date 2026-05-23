@@ -2620,6 +2620,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             self.fan_page.set_service(self.services["fan"])
             self.fan_page.set_platform_service(self.services["platform"])
             self.fan_page.set_power_service(self.services["power"])
+            self.fan_page.set_rgb_service(self.services["rgb"])
             self.lighting_page.set_service(self.services["rgb"])
             if hasattr(self, 'keyboard_page'):
                 self.keyboard_page.set_service(self.services["platform"])

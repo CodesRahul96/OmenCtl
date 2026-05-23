@@ -39,6 +39,7 @@ TRANSLATIONS = {
         "fan_disabled": "Fan kontrolü devre dışı",
         "checking": "Kontrol ediliyor...", "no_ppd": "PPD yok",
         "active_profile": "Aktif profil", "mode": "Mod",
+        "active": "Aktif", "inactive": "Pasif",
         "saver": "Tasarruf", "balanced": "Dengeli", "performance": "Performans",
         "auto": "Otomatik", "max": "Maksimum", "custom": "Özel", "standard": "Standart",
         "curve_desc": "Noktaları sürükleyerek fan eğrisini özelleştirin. X: Sıcaklık (°C), Y: Fan Hızı (%)",
@@ -49,7 +50,7 @@ TRANSLATIONS = {
         "effect": "EFEKT", "direction": "YÖN", "speed": "HIZ", "brightness": "PARLAKLIK",
         "static_eff": "Sabit", "breathing": "Nefes Alma", "wave": "Dalga", "cycle": "Renk Döngüsü",
         "ltr": "Sol → Sağ", "rtl": "Sağ → Sol",
-        "win_lock": "Oyun Tuş Kilidi",
+        "win_lock": "Süper Tuş Kilidi",
         # Keyboard page
         "keyboard_shortcuts": "Kısayollar", "special_keys": "ÖZEL TUŞLAR",
         "omen_key": "Omen Tuşu", "victus_key": "Omen Tuşu",
@@ -145,6 +146,7 @@ TRANSLATIONS = {
         "fan_disabled": "Fan control unavailable",
         "checking": "Checking...", "no_ppd": "No PPD",
         "active_profile": "Active profile", "mode": "Mode",
+        "active": "Active", "inactive": "Inactive",
         "saver": "Power Saver", "balanced": "Balanced", "performance": "Performance",
         "auto": "Automatic", "max": "Maximum", "custom": "Custom", "standard": "Standard",
         "curve_desc": "Drag points to customize fan curve. X: Temperature (°C), Y: Fan Speed (%)",
@@ -155,7 +157,7 @@ TRANSLATIONS = {
         "effect": "EFFECT", "direction": "DIRECTION", "speed": "SPEED", "brightness": "BRIGHTNESS",
         "static_eff": "Static", "breathing": "Breathing", "wave": "Wave", "cycle": "Cycle",
         "ltr": "Left → Right", "rtl": "Right → Left",
-        "win_lock": "Gaming Key Lock",
+        "win_lock": "Super Key Lock",
         # Keyboard page
         "keyboard_shortcuts": "Shortcuts", "special_keys": "SPECIAL KEYS",
         "omen_key": "Omen Key", "victus_key": "Omen Key",
