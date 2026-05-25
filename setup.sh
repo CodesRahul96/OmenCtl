@@ -373,21 +373,49 @@ manage_driver() {
             if [ "$action" = "install" ]; then
                 info "Applying kernel module configuration..."
 
-                # Unload stock hp_wmi before loading our DKMS override.
-                info "Unloading stock hp_wmi module..."
-                modprobe -r hp_wmi 2>/dev/null || true
+                # Detect whether driver/setup.sh ran in RGB-only mode
+                local stock_fan_support=true
+                local kver_major kver_minor board_name_check
+                kver_major=$(uname -r | cut -d. -f1)
+                kver_minor=$(uname -r | cut -d. -f2)
+                board_name_check=$(cat /sys/devices/virtual/dmi/id/board_name 2>/dev/null | tr '[:lower:]' '[:upper:]' || echo "")
 
-                info "Loading modules via modprobe..."
-                if modprobe hp-wmi 2>/dev/null; then
-                    log "hp-wmi loaded successfully"
-                else
-                    warn "hp-wmi failed to load — check: dmesg | tail -20"
+                if [ "$kver_major" -lt 7 ]; then
+                    stock_fan_support=false
+                fi
+                case "$board_name_check" in
+                    8D41) stock_fan_support=false ;;
+                esac
+                if [ "${FORCE_RGB_ONLY:-false}" = true ]; then
+                    stock_fan_support=true
                 fi
 
-                if modprobe hp-rgb-lighting 2>/dev/null; then
-                    log "hp-rgb-lighting loaded successfully"
+                if $stock_fan_support; then
+                    # Kernel ≥7.0: stock hp-wmi handles fan control, only load RGB driver
+                    info "Stock hp-wmi handles fan control. Loading hp-rgb-lighting only..."
+                    modprobe -r hp_rgb_lighting 2>/dev/null || true
+                    if modprobe hp-rgb-lighting 2>/dev/null; then
+                        log "hp-rgb-lighting loaded successfully"
+                    else
+                        warn "hp-rgb-lighting failed to load — check: dmesg | tail -20"
+                    fi
                 else
-                    warn "hp-rgb-lighting failed to load"
+                    # Kernel <7.0: load our custom hp-wmi + rgb driver
+                    info "Unloading stock hp_wmi module..."
+                    modprobe -r hp_wmi 2>/dev/null || true
+
+                    info "Loading modules via modprobe..."
+                    if modprobe hp-wmi 2>/dev/null; then
+                        log "hp-wmi loaded successfully"
+                    else
+                        warn "hp-wmi failed to load — check: dmesg | tail -20"
+                    fi
+
+                    if modprobe hp-rgb-lighting 2>/dev/null; then
+                        log "hp-rgb-lighting loaded successfully"
+                    else
+                        warn "hp-rgb-lighting failed to load"
+                    fi
                 fi
 
                 info "Active module path (debug):"
@@ -762,8 +790,71 @@ do_update() {
     check_root
     info "$(msg updating)"
 
-    # Clean legacy remnants of OmenCommandCenterforLinux (legacy OmenCtl) / hp-manager
-    info "Cleaning legacy OMEN Command Center remnants..."
+    # ── 1. Pull latest source ─────────────────────────────────────────────
+    if [ -d ".git" ] && [ "${_UPDATE_GIT_DONE:-}" != "1" ]; then
+        info "Pulling latest changes..."
+        git stash 2>/dev/null || true
+        git pull
+        # Re-exec with the freshly updated script so bash reads the new version
+        info "Restarting setup with updated script..."
+        export _UPDATE_GIT_DONE=1
+        exec "$0" _update_apply
+    fi
+
+    # ── 2. Nuke EVERYTHING from previous installs ─────────────────────────
+
+    info "Stopping all services..."
+    systemctl stop    hp-manager.service com.yyl.hpmanager.service 2>/dev/null || true
+    systemctl disable hp-manager.service com.yyl.hpmanager.service 2>/dev/null || true
+    systemctl stop    omen-command-center.service 2>/dev/null || true
+    systemctl disable omen-command-center.service 2>/dev/null || true
+    for svc in fan rgb power mux platform; do
+        systemctl stop "hpm-${svc}.service" 2>/dev/null || true
+        systemctl disable "hpm-${svc}.service" 2>/dev/null || true
+    done
+
+    info "Unloading kernel modules..."
+    modprobe -r hp_rgb_lighting 2>/dev/null || true
+    modprobe -r hp_wmi          2>/dev/null || true
+
+    info "Removing ALL DKMS entries for hp-rgb-lighting..."
+    if command -v dkms &>/dev/null; then
+        # Remove every version registered in DKMS, not just the current one
+        for entry in $(dkms status 2>/dev/null | grep -i 'hp-rgb-lighting' | sed 's/,.*//; s/ //g'); do
+            local mod_name mod_ver
+            mod_name=$(echo "$entry" | cut -d/ -f1)
+            mod_ver=$(echo "$entry" | cut -d/ -f2)
+            if [ -n "$mod_name" ] && [ -n "$mod_ver" ]; then
+                info "  Removing DKMS: ${mod_name}/${mod_ver}"
+                dkms remove -m "$mod_name" -v "$mod_ver" --all 2>/dev/null || true
+            fi
+        done
+    fi
+
+    info "Purging stale kernel module files..."
+    local kver
+    kver=$(uname -r)
+    find /lib/modules/"$kver" /usr/lib/modules/"$kver" \
+        -name 'hp-rgb-lighting.ko*' -delete 2>/dev/null || true
+    find /lib/modules/"$kver" /usr/lib/modules/"$kver" \
+        -name 'hp-wmi.ko' -path '*/updates/*' -delete 2>/dev/null || true
+    find /lib/modules/"$kver" /usr/lib/modules/"$kver" \
+        -name 'hp-wmi.ko' -path '*/dkms/*' -delete 2>/dev/null || true
+
+    # Restore stock hp-wmi backup if exists
+    while IFS= read -r bu_file; do
+        local orig_file="${bu_file%.backup}"
+        info "  Restoring stock driver: $orig_file"
+        mv "$bu_file" "$orig_file"
+    done < <(find /lib/modules/"$kver" /usr/lib/modules/"$kver" \
+        -name 'hp-wmi.ko*.backup' 2>/dev/null | sort -u)
+
+    depmod -a 2>/dev/null || true
+
+    info "Removing DKMS source directories..."
+    rm -rf /usr/src/hp-rgb-lighting-*
+
+    info "Cleaning legacy OmenCommandCenterforLinux / omen-command-center remnants..."
     rm -rf /usr/libexec/omen-command-center \
            /etc/omen-command-center \
            /usr/share/omen-command-center \
@@ -774,16 +865,30 @@ do_update() {
            /usr/share/applications/omen-command-center.desktop \
            2>/dev/null || true
 
-    if [ -d ".git" ]; then
-        info "Pulling latest changes..."
-        git stash 2>/dev/null || true
-        git pull
-        # Re-exec with the freshly updated script so bash reads the new version
-        info "Restarting setup with updated script..."
-        exec "$0" _update_apply
-    fi
+    info "Cleaning current hp-manager installation..."
+    rm -f /etc/systemd/system/hp-manager.service
+    rm -f /etc/systemd/system/com.yyl.hpmanager.service
+    rm -f "$BIN_LINK"
+    rm -f "$OMENCTL_LINK"
+    rm -f "$CLI_LINK"
+    rm -f "$UNINSTALLER_LINK"
+    rm -rf "$INSTALL_DIR"
+    rm -rf "$DATA_DIR"
+    rm -rf "/var/lib/hp-manager"
+    rm -f /etc/dbus-1/system.d/com.yyl.hpmanager.conf
+    for svc in fan rgb power mux platform; do
+        rm -f "/etc/systemd/system/hpm-${svc}.service"
+        rm -f "/etc/dbus-1/system.d/com.yyl.hpmanager.${svc}.conf"
+    done
+    rm -f /usr/share/applications/com.yyl.hpmanager.desktop
+    rm -f /usr/share/icons/hicolor/48x48/apps/omenctl.png
+    rm -f /etc/modules-load.d/hp-rgb-lighting.conf
+    rm -f /etc/modules-load.d/hp-wmi.conf
 
-    do_uninstall
+    systemctl daemon-reload
+    log "Legacy cleanup complete. Starting fresh install..."
+
+    # ── 3. Fresh install (will prompt for driver choices) ─────────────────
     do_install
 
     log "$(msg updated)"
@@ -808,17 +913,9 @@ case "${1}" in
     uninstall)      do_uninstall ;;
     update)         do_update ;;
     _update_apply)  
-        # Clean legacy remnants of OmenCommandCenterforLinux (legacy OmenCtl) / hp-manager
-        rm -rf /usr/libexec/omen-command-center \
-               /etc/omen-command-center \
-               /usr/share/omen-command-center \
-               /usr/bin/omen-command-center \
-               /etc/dbus-1/system.d/com.yyl.omen-command-center.conf \
-               /etc/systemd/system/omen-command-center.service \
-               /usr/share/applications/com.yyl.omen-command-center.desktop \
-               /usr/share/applications/omen-command-center.desktop \
-               2>/dev/null || true
-        do_uninstall; do_install; log "$(msg updated)" ;;
+        # Called after git pull + exec; do_update skips the git section and
+        # goes straight to nuke-everything cleanup → fresh install with prompts
+        do_update ;;
     -h|--help)
         msg usage
         echo "Options: install, uninstall, update"

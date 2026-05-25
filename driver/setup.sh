@@ -213,6 +213,16 @@ do_install() {
             dkms remove -m "$MODNAME" -v "$v" --all 2>/dev/null || true
         done
     fi
+
+    # Purge stale .ko files from previous installs that may reference
+    # removed symbols (e.g. hp_wmi_mutex).  Without this, modprobe may
+    # find and load the old .ko instead of the freshly built one.
+    info "Purging stale hp-rgb-lighting module files..."
+    KVER=$(uname -r)
+    find /lib/modules/"$KVER" /usr/lib/modules/"$KVER" \
+        -name 'hp-rgb-lighting.ko*' -delete 2>/dev/null || true
+    depmod -a 2>/dev/null || true
+
     rm -rf "/usr/src/${MODNAME}-${MODVER}"
     mkdir -p "/usr/src/${MODNAME}-${MODVER}"
 
@@ -225,11 +235,11 @@ do_install() {
         info "Kernel $(uname -r) detected (>= 7.0) — stock hp-wmi already has Omen fan control."
         info "Only building hp-rgb-lighting (RGB keyboard control)..."
 
-        # RGB-only DKMS config
+        # RGB-only DKMS config — pass RGB_ONLY=1 so Makefile only builds hp-rgb-lighting
         cat > "/usr/src/${MODNAME}-${MODVER}/dkms.conf" <<DKMSRGB
 PACKAGE_NAME="hp-rgb-lighting"
 PACKAGE_VERSION="$MODVER"
-MAKE[0]="grep -iq clang /proc/version && make LLVM=1 -C \$kernel_source_dir M=\$dkms_tree/\$module/\$module_version/build EXTRA_CFLAGS='' modules || make -C \$kernel_source_dir M=\$dkms_tree/\$module/\$module_version/build EXTRA_CFLAGS='' modules"
+MAKE[0]="grep -iq clang /proc/version && make LLVM=1 RGB_ONLY=1 -C \$kernel_source_dir M=\$dkms_tree/\$module/\$module_version/build EXTRA_CFLAGS='' modules || make RGB_ONLY=1 -C \$kernel_source_dir M=\$dkms_tree/\$module/\$module_version/build EXTRA_CFLAGS='' modules"
 CLEAN=true
 BUILT_MODULE_NAME[0]="hp-rgb-lighting"
 DEST_MODULE_LOCATION[0]="/kernel/drivers/platform/x86/hp"
@@ -257,6 +267,9 @@ DKMSRGB
     fi
     dkms build   -m "$MODNAME" -v "$MODVER"          || error "DKMS build failed. Check logs."
     dkms install -m "$MODNAME" -v "$MODVER" --force   || error "DKMS install failed."
+
+    # Refresh module dependency database so modprobe picks up the new .ko
+    depmod -a
 
     # After DKMS install succeeds, archive stock hp-wmi so the DKMS module wins consistently.
     if ! $STOCK_FAN_SUPPORT && [[ -n "$ORIG_WMI" ]] && [[ -f "$ORIG_WMI" ]]; then
@@ -356,6 +369,8 @@ DKMSRGB
         info "MOK enrollment pending — skipping module load until reboot."
     elif $STOCK_FAN_SUPPORT; then
         info "Loading modules..."
+        # Unload any stale hp_rgb_lighting first so the freshly built one is loaded
+        modprobe -r hp_rgb_lighting 2>/dev/null || true
         modprobe led_class_multicolor 2>/dev/null || true
         # FIX: use modprobe (not insmod) — searches DKMS-installed paths correctly
         if modprobe hp_rgb_lighting 2>/dev/null; then

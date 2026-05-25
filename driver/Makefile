@@ -1,7 +1,13 @@
 
-# Module names — both built together
+# Module names
+# When RGB_ONLY=1, only build the RGB lighting companion driver
+# (used on kernel >=7.0 where stock hp-wmi already handles fan control)
+ifdef RGB_ONLY
+obj-m += hp-rgb-lighting.o
+else
 obj-m += hp-wmi.o
 obj-m += hp-rgb-lighting.o
+endif
 
 # Kernel build directory
 KDIR := /lib/modules/$(shell uname -r)/build
