@@ -3508,7 +3508,7 @@ def main():
     if not HAS_ADW:
         print("Warning: libadwaita (Adw) not found. Running with GTK fallback theme support.", flush=True)
     app = HPManagerApp(
-        application_id="com.yyl.hpmanager.gui",
+        application_id="com.yyl.hpmanager",
         flags=Gio.ApplicationFlags.FLAGS_NONE,
     )
     sys.exit(app.run(sys.argv))

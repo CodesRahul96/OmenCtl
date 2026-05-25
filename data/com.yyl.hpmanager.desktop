@@ -9,3 +9,5 @@ Type=Application
 Categories=System;Settings;HardwareSettings;
 Keywords=HP;Omen;Victus;Fan;RGB;GPU;Gaming;
 StartupNotify=true
+StartupWMClass=com.yyl.hpmanager
+
