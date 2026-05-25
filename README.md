@@ -1,5 +1,4 @@
-# OmenCtl v1.5.0
-
+## OmenControl v1.5.0 ##
 <p align="center">
   <img src="images/omenctl.png" alt="OmenCtl Logo" width="180">
 </p>
