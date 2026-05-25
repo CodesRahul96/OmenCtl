@@ -88,6 +88,7 @@ sudo ./setup.sh install
 ### Upgrading to v1.5.0
 To upgrade your current installation, clean up legacy remnants, and load the new optimized permissions:
 ```bash
+git clone https://github.com/yunusemreyl/OmenCtl.git
 cd OmenCtl
 git pull
 sudo ./setup.sh update
