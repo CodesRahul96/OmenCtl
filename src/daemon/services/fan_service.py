@@ -126,30 +126,9 @@ class FanController:
         if val == 1:
             self.mode = "custom"
             return
-        self.mode = self._read_mode_fallback()
-
-    def _read_mode_fallback(self):
-        for path in (
-            "/sys/devices/platform/hp-wmi/thermal_profile",
-            "/sys/devices/platform/hp-omen/thermal_profile",
-        ):
-            if not sysfs_exists(path):
-                continue
-            thermal_profile = sysfs_read(path, THERMAL_PROFILE_BALANCED)
-            if thermal_profile == THERMAL_PROFILE_MAX:
-                return "max"
-            return "auto"
-
-        for path in (
-            "/sys/firmware/acpi/platform_profile",
-            "/sys/devices/platform/hp-wmi/platform_profile",
-        ):
-            if not sysfs_exists(path):
-                continue
-            normalized = normalize_profile_name(sysfs_read_str(path, "balanced"))
-            return "max" if "performance" in normalized else "auto"
-
-        return "auto"
+        # pwm1_enable == 2 means auto; don't use platform_profile fallback
+        # because "performance" power profile ≠ "max" fan mode.
+        self.mode = "auto"
 
     # ── read ──────────────────────────────────────────────────────────
 
@@ -198,13 +177,12 @@ class FanController:
         if val is None:
             return False
 
-        if self.get_mode() == mode:
-            logger.info("Fan mode already %s, skipping write", mode)
-            return True
-
+        # Always attempt the pwm1_enable write instead of relying on
+        # cached/fallback mode detection which can be inaccurate.
         ok = sysfs_write(os.path.join(self.hwmon_path, "pwm1_enable"), val)
 
         if not ok and mode == "max":
+            logger.info("pwm1_enable write failed for max, trying platform profile fallback")
             for profile_path, profile_value in (
                 ("/sys/devices/platform/hp-wmi/thermal_profile", "1"),
                 ("/sys/devices/platform/hp-omen/thermal_profile", "1"),
@@ -213,17 +191,38 @@ class FanController:
             ):
                 if not sysfs_exists(profile_path):
                     continue
+                logger.debug("Trying fallback: %s = %s", profile_path, profile_value)
                 if sysfs_write(profile_path, profile_value):
                     ok = True
+                    logger.info("Max fan mode set via fallback: %s", profile_path)
+                    break
+
+        if not ok and mode == "auto":
+            logger.info("pwm1_enable write failed for auto, trying platform profile fallback")
+            for profile_path, profile_value in (
+                ("/sys/devices/platform/hp-wmi/thermal_profile", "0"),
+                ("/sys/devices/platform/hp-omen/thermal_profile", "0"),
+                ("/sys/firmware/acpi/platform_profile", "balanced"),
+                ("/sys/devices/platform/hp-wmi/platform_profile", "balanced"),
+            ):
+                if not sysfs_exists(profile_path):
+                    continue
+                logger.debug("Trying fallback: %s = %s", profile_path, profile_value)
+                if sysfs_write(profile_path, profile_value):
+                    ok = True
+                    logger.info("Auto fan mode set via fallback: %s", profile_path)
                     break
 
         if ok:
             self.mode = mode
             logger.info("Fan mode set to %s", mode)
+        else:
+            logger.warning("Failed to set fan mode to %s (all paths failed)", mode)
         return ok
 
     def set_fan_target(self, fan_num, rpm):
         if not self.hwmon_path or fan_num not in self.found_fans:
+            logger.debug("set_fan_target: invalid fan_num=%s or no hwmon", fan_num)
             return False
         rpm = max(0, min(rpm, self.get_max_speed(fan_num)))
         path = os.path.join(self.hwmon_path, f"fan{fan_num}_target")
@@ -232,7 +231,7 @@ class FanController:
         elif self._has_pwm_fallback():
             ok = self._set_pwm_fallback_target(fan_num, rpm)
         else:
-            logger.warning(
+            logger.debug(
                 "No fan%d_target or pwm1 fallback available under %s",
                 fan_num,
                 self.hwmon_path,
@@ -241,6 +240,8 @@ class FanController:
 
         if ok:
             logger.info("Fan %d target set to %d RPM", fan_num, rpm)
+        else:
+            logger.debug("Fan %d target set to %d RPM failed", fan_num, rpm)
         return ok
 
     def _has_pwm_fallback(self):

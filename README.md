@@ -1,4 +1,4 @@
-## OmenControl v1.5.0 ##
+## OmenControl v1.5.1 ##
 <p align="center">
   <img src="images/omenctl.png" alt="OmenCtl Logo" width="180">
 </p>
@@ -50,7 +50,7 @@
 ---
 
 > [!NOTE]
-> ### 🌟 Welcome to OmenCtl (v1.5.0 Release)
+> ### 🌟 Welcome to OmenCtl (v1.5.1 Release)
 > **OmenCtl** (formerly *OMEN Command Center for Linux*) is a completely re-engineered, native control suite built to bridge the gap between official Windows tools and Linux. By combining low-level ACPI/WMI registers with beautiful, modern GTK4 interface designs, OmenCtl gives you full dominion over your laptop.
 > 
 > **Here is what OmenCtl accomplishes for your laptop:**
@@ -69,12 +69,13 @@
 * **Stable Hysteresis Algorithm:** Re-engineered fan controller with a **15-sample moving average history** and a **4.0°C cooling hysteresis deadband**. The fans react instantly to cool your system but remain locked at speed during slight CPU temperature drops, preventing annoying fan speed pulsing/triggering sounds.
 * **RPM Jitter Filter:** Filters out small speed adjustments under a 400 RPM threshold for quiet, stable acoustics.
 * **Custom Curve Editor:** Precise drag-and-drop spline editor letting you design custom temperature-to-speed curves with interactive grid snap.
+* **Governed Telemetry**: Dual-telemetry speed governing driven by `max(cpu_temp, gpu_temp)`. Your fans react to the hottest component in the system to protect both CPU and GPU workloads.
 
 ### ⚡ WMI Hardware-First Power Profiles
 * **Dynamic hp-wmi Capsule:** The power profiles segment automatically queries your WMI bus and builds buttons matching the exact parameters supported by your laptop (e.g. `power-saver`, `balanced`, `performance`). No hardcoded or mismatched buttons.
 * **Hardware-First Sync:** Queries the direct ACPI/WMI hardware registers (`/sys/firmware/acpi/platform_profile`) as the primary source of truth, guaranteeing instant, uncached profile synchronization.
 * **PPD Polkit-Free Transitions:** Integrated the `powerprofilesctl` tool natively under our root microservice, bypassing complex D-Bus and PolicyKit `AccessDenied` write locks.
-* **cTGP & PPAB Boost paths:** Automatically locks CPU and GPU boost rails (Configurable TGP & PPAB) at the hardware level when performance mode is engaged.
+* **cTGP & PPAB Boost rails:** Automatically locks CPU and GPU boost rails (Configurable TGP & PPAB) at the hardware level when performance mode is engaged.
 
 ### 🎨 Premium Dynamic Themes
 * **Theme-Adaptive Visuals:** High-contrast Dark and Light modes. Gauges, radial rings, and capsule buttons dynamically invert their colors, tracks, and borders to offer premium visual excellence.
@@ -99,7 +100,7 @@
 
 ---
 > [!NOTE]
->### Upgrading to v1.5.0
+>### Upgrading to v1.5.1
 >To upgrade your current installation, clean up legacy remnants, and load the new optimized permissions:
 >```bash
 >git clone https://github.com/yunusemreyl/OmenCtl.git
@@ -107,7 +108,7 @@
 >git pull
 >sudo ./setup.sh update
 >```
->*(The update routine will sturdily stashen your files, pull the latest repo, remove all legacy `omencommandcenterforlinux` leftover links, reload systemd, and cleanly restart the microservices).*
+>*(The update routine will sturdily stash your files, pull the latest repo, apply dynamic D-Bus reload policies, and cleanly restart the microservices).*
 ---
 ### Fresh Install
 Open your terminal and run:

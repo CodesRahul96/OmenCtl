@@ -1,10 +1,11 @@
 [Unit]
 Description=OMEN Command Center — Platform Info Service
-After=dbus.service
-Requires=dbus.service
+After=dbus.service systemd-logind.service
+Requires=dbus.service systemd-logind.service
 
 [Service]
 Type=simple
+ExecStartPre=/bin/sleep 2
 ExecStart=/usr/bin/python3 /usr/libexec/hp-manager/services/platform_service.py
 Restart=on-failure
 RestartSec=3

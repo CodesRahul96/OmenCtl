@@ -13,7 +13,7 @@ OMENCTL_LINK="/usr/bin/omenctl"
 CLI_LINK="/usr/bin/omen"
 UNINSTALLER_LINK="/usr/bin/hp-manager-uninstall"
 CONFIG_DIR="/etc/hp-manager"
-VERSION="1.5.0"
+VERSION="1.5.1"
 
 # Colors
 RED='\033[0;31m'
@@ -672,12 +672,24 @@ LAUNCHER
     for svc in fan rgb power mux platform; do
         if [ -f "data/com.yyl.hpmanager.${svc}.conf" ]; then
             cp "data/com.yyl.hpmanager.${svc}.conf" /etc/dbus-1/system.d/
+            chmod 644 "/etc/dbus-1/system.d/com.yyl.hpmanager.${svc}.conf"
+            chown root:root "/etc/dbus-1/system.d/com.yyl.hpmanager.${svc}.conf"
         fi
         if [ -f "data/hpm-${svc}.service" ]; then
             cp "data/hpm-${svc}.service" /etc/systemd/system/
+            chmod 644 "/etc/systemd/system/hpm-${svc}.service"
+            chown root:root "/etc/systemd/system/hpm-${svc}.service"
         fi
     done
     cp data/com.yyl.hpmanager.desktop /usr/share/applications/
+    chmod 644 /usr/share/applications/com.yyl.hpmanager.desktop
+    chown root:root /usr/share/applications/com.yyl.hpmanager.desktop
+
+    # Reload D-Bus system policy configuration dynamically to apply new permissions immediately
+    if command -v systemctl &>/dev/null; then
+        info "Reloading D-Bus system configuration..."
+        systemctl reload dbus 2>/dev/null || true
+    fi
 
     # Ensure drivers load on boot via modules-load.d
     echo "hp-rgb-lighting" > /etc/modules-load.d/hp-rgb-lighting.conf
@@ -729,6 +741,7 @@ rm -f /etc/modules-load.d/hp-rgb-lighting.conf
 rm -f /etc/modules-load.d/hp-wmi.conf
 
 systemctl daemon-reload
+systemctl reload dbus 2>/dev/null || true
 echo "[✓] OMEN Command Center for Linux uninstalled."
 
 # Remove this uninstaller last
@@ -740,6 +753,17 @@ UNINSTALLER
     for svc in fan rgb power mux platform; do
         systemctl enable "hpm-${svc}.service" || true
         systemctl restart "hpm-${svc}.service" || warn "Daemon hpm-${svc} failed to start"
+    done
+
+    # Post-installation delay and validation check
+    info "Waiting a brief moment for services to initialize..."
+    sleep 2.5
+    for svc in fan rgb power mux platform; do
+        if systemctl is-active --quiet "hpm-${svc}.service"; then
+            log "Service hpm-${svc} is running successfully"
+        else
+            warn "Service hpm-${svc} failed to start! Check logs: journalctl -u hpm-${svc}.service"
+        fi
     done
 
     # Omen Key shortcut
@@ -782,6 +806,7 @@ do_uninstall() {
     rm -f /etc/modules-load.d/hp-wmi.conf
 
     systemctl daemon-reload
+    systemctl reload dbus 2>/dev/null || true
     log "$(msg uninstalled)"
 }
 

@@ -1433,7 +1433,7 @@ class FanPage(Gtk.Box):
         self.append(scroll)
         
         self.default_points = [(48, 0), (58, 35), (70, 60), (78, 72), (85, 100)]
-        self.performance_points = [(35, 0), (50, 35), (80, 70), (85, 90), (90, 100)]
+        self.performance_points = [(35, 0), (50, 45), (65, 70), (75, 90), (82, 100)]
         self.custom_points = list(self.default_points)
 
         # Set default active state
@@ -1482,11 +1482,8 @@ class FanPage(Gtk.Box):
         return mapping.get(mode, ("balanced", "auto"))
 
     def _power_mode_confirmed(self, power_profile, fan_info, mode):
-        expected_profile, expected_fan_mode = self._expected_power_state(mode)
+        expected_profile, _ = self._expected_power_state(mode)
         active_profile = power_profile.get("active", "")
-        active_fan_mode = fan_info.get("mode", "auto")
-        if mode == "custom":
-            return active_profile == expected_profile and active_fan_mode == expected_fan_mode
         return active_profile == expected_profile
 
     def _set_pending_power_mode(self, mode):
@@ -1586,7 +1583,7 @@ class FanPage(Gtk.Box):
         fan_modes = {
             0: ("auto", None),
             1: ("custom", None),
-            2: ("max", 100),
+            2: ("max", None),   # Max mode is handled entirely by driver/BIOS
         }
         fan_mode, fan_pct = fan_modes.get(level, ("auto", None))
         self.fan_control_mode = {0: "auto", 1: "performance", 2: "max"}.get(level, "auto")
@@ -1675,33 +1672,9 @@ class FanPage(Gtk.Box):
                 except:
                     GLib.idle_add(self._clear_pending_power_mode)
 
-            # Keep fan daemon in sync with the selected profile.
-            if self.service:
-                try:
-                    if daemon_profile in ("power-saver", "balanced"):
-                        _dbus_call(self.service.SetFanMode, "auto")
-                        self.fan_control_level = 0
-                        self.fan_control_mode = "auto"
-                        self.fan_curve_editor_open = False
-                        GLib.idle_add(self._sync_fan_control_buttons, 0)
-                        GLib.idle_add(self._set_custom_button_active, False)
-                        GLib.idle_add(lambda: self.curve_card.set_reveal_child(False) if hasattr(self, "curve_card") and self.curve_card is not None else False)
-                    elif daemon_profile == "performance":
-                        if daemon_fan == "custom":
-                            _dbus_call(self.service.SetFanMode, "custom")
-                            self.fan_control_mode = "custom"
-                            self._apply_fan_curve()
-                        else:
-                            _dbus_call(self.service.SetFanMode, "custom")
-                            self.fan_control_level = 1
-                            self.fan_control_mode = "performance"
-                            self.fan_curve_editor_open = False
-                            GLib.idle_add(self._sync_fan_control_buttons, 1)
-                            GLib.idle_add(self._set_custom_button_active, False)
-                            GLib.idle_add(lambda: self.curve_card.set_reveal_child(False) if hasattr(self, "curve_card") and self.curve_card is not None else False)
-                            self._apply_fan_curve(points=self.performance_points)
-                except Exception as e:
-                    print(f"Fan profile sync error: {e}")
+            # Keep fan daemon decoupled from power profile changes as requested.
+            # Changing the power profile no longer automatically overrides or alters the user's selected fan mode.
+            pass
                     
             if callable(self.on_profile_change):
                 try: GLib.idle_add(self.on_profile_change, daemon_profile)
@@ -1867,12 +1840,13 @@ class FanPage(Gtk.Box):
         gpu_tgp_state = data.get("gpu_tgp_state", False)
         gpu_ppab_state = data.get("gpu_ppab_state", False)
 
-        # Sync temp history and slider marker
-        self.temp_history.append(cpu_t)
+        # Sync temp history and slider marker using max of CPU and GPU temp to ensure proper cooling response for both
+        max_t = max(cpu_t, gpu_t)
+        self.temp_history.append(max_t)
         # Increased moving average history size to 15 to smooth out short CPU spikes
         if len(self.temp_history) > 15:
             self.temp_history.pop(0)
-        self.fan_curve.set_current_temp(cpu_t)
+        self.fan_curve.set_current_temp(max_t)
 
         # Sync Gauges & RAM Bridge
         fans = fan_info.get("fans", {})
