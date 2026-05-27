@@ -1314,10 +1314,10 @@ class FanPage(Gtk.Box):
         ctgp_row.append(Gtk.Image.new_from_icon_name("video-display-symbolic"))
         ctgp_row.append(Gtk.Label(label="cTGP Boost Mode", xalign=0, css_classes=["dim-label"]))
         ctgp_row.append(Gtk.Label(hexpand=True))
-        self.ctgp_switch = Gtk.Switch()
-        self.ctgp_switch.add_css_class("gaming-switch")
-        self.ctgp_switch.connect("state-set", self._on_ctgp_toggled)
-        ctgp_row.append(self.ctgp_switch)
+        self.ctgp_status_label = Gtk.Label(label=T("inactive"))
+        self.ctgp_status_label.add_css_class("gamemode-badge-inactive")
+        self.ctgp_status_label.set_margin_end(6)
+        ctgp_row.append(self.ctgp_status_label)
         self.gaming_card.append(ctgp_row)
 
         self.gaming_card.append(Gtk.Separator())
@@ -1328,10 +1328,10 @@ class FanPage(Gtk.Box):
         ppab_row.append(Gtk.Image.new_from_icon_name("processor-symbolic"))
         ppab_row.append(Gtk.Label(label="PPAB Dynamic Boost", xalign=0, css_classes=["dim-label"]))
         ppab_row.append(Gtk.Label(hexpand=True))
-        self.ppab_switch = Gtk.Switch()
-        self.ppab_switch.add_css_class("gaming-switch")
-        self.ppab_switch.connect("state-set", self._on_ppab_toggled)
-        ppab_row.append(self.ppab_switch)
+        self.ppab_status_label = Gtk.Label(label=T("inactive"))
+        self.ppab_status_label.add_css_class("gamemode-badge-inactive")
+        self.ppab_status_label.set_margin_end(6)
+        ppab_row.append(self.ppab_status_label)
         self.gaming_card.append(ppab_row)
 
         self.gaming_card.append(Gtk.Separator())
@@ -1709,33 +1709,7 @@ class FanPage(Gtk.Box):
         threading.Thread(target=_bg, daemon=True).start()
         return True
 
-    def _on_ctgp_toggled(self, switch, state):
-        """Force write configurable TGP override if supported."""
-        def _bg():
-            try:
-                for base in ("/sys/devices/platform/hp-wmi", "/sys/devices/platform/hp-omen"):
-                    tgp_p = f"{base}/gpu_tgp"
-                    if os.path.exists(tgp_p):
-                        with open(tgp_p, "w") as f:
-                            f.write("1" if state else "0")
-                            break
-            except: pass
-        threading.Thread(target=_bg, daemon=True).start()
-        return True
 
-    def _on_ppab_toggled(self, switch, state):
-        """Force write PPAB power dynamic boost override if supported."""
-        def _bg():
-            try:
-                for base in ("/sys/devices/platform/hp-wmi", "/sys/devices/platform/hp-omen"):
-                    ppab_p = f"{base}/gpu_ppab"
-                    if os.path.exists(ppab_p):
-                        with open(ppab_p, "w") as f:
-                            f.write("1" if state else "0")
-                            break
-            except: pass
-        threading.Thread(target=_bg, daemon=True).start()
-        return True
 
 
 
@@ -1950,10 +1924,19 @@ class FanPage(Gtk.Box):
             current_tgp = gpu_tgp_state if gpu_tgp_state else tgp_target
             current_ppab = gpu_ppab_state if gpu_ppab_state else ppab_target
 
-            if self.ctgp_switch.get_active() != current_tgp:
-                self.ctgp_switch.set_active(current_tgp)
-            if self.ppab_switch.get_active() != current_ppab:
-                self.ppab_switch.set_active(current_ppab)
+            if current_tgp:
+                self.ctgp_status_label.set_label(T("active"))
+                self.ctgp_status_label.set_css_classes(["gamemode-badge-active"])
+            else:
+                self.ctgp_status_label.set_label(T("inactive"))
+                self.ctgp_status_label.set_css_classes(["gamemode-badge-inactive"])
+
+            if current_ppab:
+                self.ppab_status_label.set_label(T("active"))
+                self.ppab_status_label.set_css_classes(["gamemode-badge-active"])
+            else:
+                self.ppab_status_label.set_label(T("inactive"))
+                self.ppab_status_label.set_css_classes(["gamemode-badge-inactive"])
 
         # Sync Sensors List (Left Card)
         self._update_sensor_list(sensors)
