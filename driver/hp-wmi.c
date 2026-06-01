@@ -148,7 +148,7 @@ static const struct thermal_profile_params omen_v1_unknown_ec_thermal_params = {
  * A generic pointer for the currently-active board's thermal profile
  * parameters.
  */
-static const struct thermal_profile_params *active_thermal_profile_params;
+static struct thermal_profile_params *active_thermal_profile_params;
 
 /*
  * DMI board names of devices that should use the omen specific path for
@@ -167,8 +167,8 @@ static const char *const omen_thermal_profile_boards[] = {
 	"878A", "878B", "878C", "87B5", "886B", "886C", "88C8", "88CB",
 	"88D1", "88D2", "88F4", "88F5", "88F6", "88F7", "88FD", "88FE",
 	"88FF", "8900", "8901", "8902", "8912", "8917", "8918", "8949",
-	"894A", "89EB", "8A15", "8A42", "8BAD", "8BAC", "8C77", "8D41",
-	"8E35", "8E41", "8BA9",
+	"894A", "89EB", "8A15", "8A42", "8BAD", "8BAC", "8C58", "8C77",
+	"8D41", "8E35", "8E41", "8BA9",
 };
 
 /*
@@ -200,8 +200,16 @@ static const char *const victus_thermal_profile_boards[] = {
 /* DMI board names of Victus 16-r and Victus 16-s laptops */
 static const struct dmi_system_id victus_s_thermal_profile_boards[] __initconst = {
 	{
+		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8902")},
+		.driver_data = (void *)&omen_v1_legacy_thermal_params,
+	},
+	{
 		/* 8A13: OMEN by HP Laptop 16-b1xxx */
 		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8A13")},
+		.driver_data = (void *)&omen_v1_legacy_thermal_params,
+	},
+	{
+		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8A44")},
 		.driver_data = (void *)&omen_v1_legacy_thermal_params,
 	},
 	{
@@ -215,6 +223,10 @@ static const struct dmi_system_id victus_s_thermal_profile_boards[] __initconst 
 	{
 		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8BBE")},
 		.driver_data = (void *)&victus_s_thermal_params,
+	},
+	{
+		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8BC2")},
+		.driver_data = (void *)&omen_v1_thermal_params,
 	},
 	{
 		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8BCA")},
@@ -238,7 +250,7 @@ static const struct dmi_system_id victus_s_thermal_profile_boards[] __initconst 
 	},
 	{
 		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8C77")},
-		.driver_data = (void *)&omen_v1_legacy_thermal_params,
+		.driver_data = (void *)&omen_v1_thermal_params,
 	},
 	{
 		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8C78")},
@@ -258,7 +270,7 @@ static const struct dmi_system_id victus_s_thermal_profile_boards[] __initconst 
 	},
 	{
 		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8D41")},
-		.driver_data = (void *)&omen_v1_unknown_ec_thermal_params,
+		.driver_data = (void *)&omen_v1_no_ec_thermal_params,
 	},
 	{
 		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8D87")},
@@ -276,11 +288,6 @@ static const struct dmi_system_id victus_s_thermal_profile_boards[] __initconst 
 		 */
 		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8BAC")},
 		.driver_data = (void *)&omen_v1_no_ec_thermal_params,
-	},
-	{
-		/* 8BC2: Victus by HP Gaming Laptop 16-r0xxx */
-		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8BC2")},
-		.driver_data = (void *)&victus_s_thermal_params,
 	},
 	{},
 };
@@ -451,6 +458,11 @@ static const struct key_entry hp_wmi_keymap[] = {
 	{KE_KEY,    0x21a9,  {KEY_TOUCHPAD_OFF}},             /* Touchpad Off */
 	{KE_KEY,    0x121a9, {KEY_TOUCHPAD_ON}},              /* Touchpad On  */
 	{KE_KEY,    0x231b,  {KEY_HELP}},
+	{KE_IGNORE, 0x21ab,  {}},             /* FnLock on */
+	{KE_IGNORE, 0x121ab, {}},             /* FnLock off */
+	{KE_IGNORE, 0x30021aa, {}},           /* kbd backlight: level 2 -> off */
+	{KE_IGNORE, 0x33221aa, {}},           /* kbd backlight: off -> level 1 */
+	{KE_IGNORE, 0x36421aa, {}},           /* kbd backlight: level 1 -> level 2 */
 	{KE_END,    0}
 };
 
@@ -542,14 +554,14 @@ struct hp_wmi_hwmon_priv {
 };
 
 struct victus_s_fan_table_header {
+	u8 num_fans;
 	u8 unknown;
-	u8 num_entries;
 } __packed;
 
 struct victus_s_fan_table_entry {
 	u8 cpu_rpm;
 	u8 gpu_rpm;
-	u8 unknown;
+	u8 noise_db;
 } __packed;
 
 struct victus_s_fan_table {
@@ -3074,10 +3086,10 @@ static int hp_wmi_setup_fan_settings(struct hp_wmi_hwmon_priv *priv)
 	}
 
 	fan_table = (struct victus_s_fan_table *)fan_data;
-	if (fan_table->header.num_entries == 0 ||
+	if (fan_table->header.num_fans == 0 ||
 	    sizeof(struct victus_s_fan_table_header) +
 	    sizeof(struct victus_s_fan_table_entry) *
-	    fan_table->header.num_entries > sizeof(fan_data)) {
+	    fan_table->header.num_fans > sizeof(fan_data)) {
 		if (!force_fan_control_support) {
 			pr_info("Malformed fan table on this board, manual fan control unavailable\n");
 			return 0;
@@ -3089,7 +3101,7 @@ static int hp_wmi_setup_fan_settings(struct hp_wmi_hwmon_priv *priv)
 	}
 
 	min_rpm = fan_table->entries[0].cpu_rpm;
-	max_rpm = fan_table->entries[fan_table->header.num_entries - 1].cpu_rpm;
+	max_rpm = fan_table->entries[fan_table->header.num_fans - 1].cpu_rpm;
 
 	gpu_delta = (fan_table->entries[0].gpu_rpm > fan_table->entries[0].cpu_rpm)
 		    ? fan_table->entries[0].gpu_rpm - fan_table->entries[0].cpu_rpm
@@ -3101,7 +3113,7 @@ static int hp_wmi_setup_fan_settings(struct hp_wmi_hwmon_priv *priv)
 
 	priv->max_rpms[0] = (u16)max_rpm * 100;
 	priv->max_rpms[1] = (u16)fan_table->entries[
-		fan_table->header.num_entries - 1].gpu_rpm * 100;
+		fan_table->header.num_fans - 1].gpu_rpm * 100;
 
 	priv->target_rpms[0] = 0;
 	priv->target_rpms[1] = 0;

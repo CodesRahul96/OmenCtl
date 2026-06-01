@@ -54,7 +54,7 @@ from pages.mux_page import MUXPage
 from pages.settings_page import SettingsPage
 from pages.keyboard_page import KeyboardPage
 
-APP_VERSION = "1.5.1"
+APP_VERSION = "1.5.2"
 CONFIG_FILE      = os.path.expanduser("~/.config/hp-manager.toml")
 CONFIG_FILE_JSON = os.path.expanduser("~/.config/hp-manager.json")
 _LAUNCHER_REFRESH_MS = 5000
@@ -2085,7 +2085,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         # ── Navigation items (excluding Settings) ──
         nav_items = [
             ("fan",       self.page_titles["fan"],       "weather-tornado-symbolic"),
-            ("lighting",  self.page_titles["lighting"],  "display-brightness-symbolic"),
+            ("lighting",  self.page_titles["lighting"],  "lightbulb-symbolic"),
             ("mux",       "MUX",                        "video-display-symbolic"),
         ]
 
@@ -2849,7 +2849,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         if not hasattr(self, "theme_toggle_icon") or self.theme_toggle_icon is None:
             return
         is_dark = self._is_dark_mode()
-        icon_name = "weather-clear-symbolic" if is_dark else "display-brightness-symbolic"
+        icon_name = "weather-clear-symbolic" if is_dark else "weather-clear-night-symbolic"
         self.theme_toggle_icon.set_from_icon_name(icon_name)
         lbl_text = T("light") if is_dark else T("dark")
         if hasattr(self, "theme_toggle_lbl") and self.theme_toggle_lbl is not None:

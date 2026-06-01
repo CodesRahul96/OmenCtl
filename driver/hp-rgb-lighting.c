@@ -78,7 +78,7 @@ static inline int encode_outsize_for_pvsz(int outsize) {
   return 1;
 }
 
-static DEFINE_MUTEX(hp_wmi_query_mutex);
+extern struct mutex hp_wmi_mutex;
 
 static int hp_wmi_perform_query(int query, enum hp_wmi_command command,
                                 void *buffer, int insize, int outsize) {
@@ -109,9 +109,9 @@ static int hp_wmi_perform_query(int query, enum hp_wmi_command command,
   args->datasize = insize;
   memcpy(args->data, buffer, flex_array_size(args, data, insize));
 
-  mutex_lock(&hp_wmi_query_mutex);
+  mutex_lock(&hp_wmi_mutex);
   ret = wmi_evaluate_method(HPWMI_BIOS_GUID, 0, mid, &input, &output);
-  mutex_unlock(&hp_wmi_query_mutex);
+  mutex_unlock(&hp_wmi_mutex);
   if (ret)
     goto out_free;
 
@@ -197,18 +197,26 @@ static ssize_t zone_store(struct device *dev, struct device_attribute *attr,
   u32 rgb;
   u8 tbl[COLOR_TABLE_SIZE];
   int ret;
+  unsigned int r, g, b;
 
   if (kstrtoint(attr->attr.name + 4, 10, &zone) || zone < 0 ||
       zone >= RGB_ZONE_COUNT)
     return -EINVAL;
-  if (kstrtou32(buf, 16, &rgb))
-    return -EINVAL;
+
+  if (sscanf(buf, "%u %u %u", &r, &g, &b) == 3) {
+      if (r > 255 || g > 255 || b > 255)
+          return -EINVAL;
+      rgb = (r << 16) | (g << 8) | b;
+  } else if (kstrtou32(buf, 16, &rgb)) {
+      return -EINVAL;
+  }
 
   mutex_lock(&rgb_mutex);
   memset(tbl, 0, sizeof(tbl));
   ret = hp_wmi_perform_query(HPWMI_COLOR_GET_QUERY, HPWMI_BACKLIGHT, tbl,
                              sizeof(tbl), sizeof(tbl));
   if (ret) {
+    pr_warn("hp-rgb-lighting: zone%d color GET failed: WMI returned %d\n", zone, ret);
     mutex_unlock(&rgb_mutex);
     return -EIO;
   }
@@ -219,6 +227,9 @@ static ssize_t zone_store(struct device *dev, struct device_attribute *attr,
 
   ret = hp_wmi_perform_query(HPWMI_COLOR_SET_QUERY, HPWMI_BACKLIGHT, tbl,
                              sizeof(tbl), sizeof(tbl));
+  if (ret)
+    pr_warn("hp-rgb-lighting: zone%d color SET failed: WMI returned %d\n", zone, ret);
+
   mutex_unlock(&rgb_mutex);
 
   return ret ? -EIO : count;
