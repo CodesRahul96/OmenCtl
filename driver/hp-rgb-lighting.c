@@ -78,7 +78,7 @@ static inline int encode_outsize_for_pvsz(int outsize) {
   return 1;
 }
 
-extern struct mutex hp_wmi_mutex;
+static DEFINE_MUTEX(hp_rgb_wmi_mutex);
 
 static int hp_wmi_perform_query(int query, enum hp_wmi_command command,
                                 void *buffer, int insize, int outsize) {
@@ -109,9 +109,9 @@ static int hp_wmi_perform_query(int query, enum hp_wmi_command command,
   args->datasize = insize;
   memcpy(args->data, buffer, flex_array_size(args, data, insize));
 
-  mutex_lock(&hp_wmi_mutex);
+  mutex_lock(&hp_rgb_wmi_mutex);
   ret = wmi_evaluate_method(HPWMI_BIOS_GUID, 0, mid, &input, &output);
-  mutex_unlock(&hp_wmi_mutex);
+  mutex_unlock(&hp_rgb_wmi_mutex);
   if (ret)
     goto out_free;
 

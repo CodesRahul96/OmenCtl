@@ -318,7 +318,7 @@ manage_driver() {
                 stock_fan_support=false
             fi
             case "$board_name" in
-                8D41) stock_fan_support=false ;; # OMEN Max 16 still needs patched hp-wmi
+                8D41|8BCD) stock_fan_support=false ;; # OMEN Max 16 & 16-xd0xxx still need patched hp-wmi
             esac
 
             # ── Prompt 1: hp-rgb-lighting (always shown — required for keyboard RGB) ──
@@ -384,7 +384,7 @@ manage_driver() {
                     stock_fan_support=false
                 fi
                 case "$board_name_check" in
-                    8D41) stock_fan_support=false ;;
+                    8D41|8BCD) stock_fan_support=false ;;
                 esac
                 if [ "${FORCE_RGB_ONLY:-false}" = true ]; then
                     stock_fan_support=true
