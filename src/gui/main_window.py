@@ -3507,39 +3507,42 @@ class HPManagerApp(Adw.Application if HAS_ADW else Gtk.Application):
         self.tray_icon = None
 
     def _on_activate(self, app):
-        print("Initializing window...", flush=True)
-        self.win = HPManagerWindow(application=app)
-        
-        try:
-            import pystray
-            from PIL import Image
+        if not hasattr(self, 'win'):
+            print("Initializing window...", flush=True)
+            self.win = HPManagerWindow(application=app)
             
-            def create_image():
-                try:
-                    return Image.open(os.path.join(IMAGES_DIR, "omenctl.png"))
-                except Exception:
-                    return Image.new('RGB', (64, 64), color=(0, 0, 0))
+            try:
+                import pystray
+                from PIL import Image
+                
+                def create_image():
+                    try:
+                        return Image.open(os.path.join(IMAGES_DIR, "omenctl.png"))
+                    except Exception:
+                        return Image.new('RGB', (64, 64), color=(0, 0, 0))
 
-            def on_show(icon, item):
-                GLib.idle_add(self.win.present)
-                
-            def on_quit(icon, item):
-                icon.stop()
-                self.win.force_quit = True
-                GLib.idle_add(self.win.close)
-                
-            menu = pystray.Menu(
-                pystray.MenuItem("Show OmenCtl", on_show, default=True),
-                pystray.MenuItem("Quit", on_quit)
-            )
-            self.tray_icon = pystray.Icon("omenctl", create_image(), "OmenCtl", menu)
-            threading.Thread(target=self.tray_icon.run, daemon=True).start()
-            print("Tray icon started.")
-        except ImportError:
-            print("pystray not installed, tray icon disabled.")
+                def on_show(icon, item):
+                    GLib.idle_add(self.win.present)
+                    
+                def on_quit(icon, item):
+                    icon.stop()
+                    self.win.force_quit = True
+                    GLib.idle_add(self.win.close)
+                    
+                menu = pystray.Menu(
+                    pystray.MenuItem("Show OmenCtl", on_show, default=True),
+                    pystray.MenuItem("Quit", on_quit)
+                )
+                self.tray_icon = pystray.Icon("omenctl", create_image(), "OmenCtl", menu)
+                threading.Thread(target=self.tray_icon.run, daemon=True).start()
+                print("Tray icon started.")
+            except ImportError:
+                print("pystray not installed, tray icon disabled.")
 
         if not self.is_hidden:
             self.win.present()
+        
+        self.is_hidden = False
 
 
 def main():
