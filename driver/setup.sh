@@ -77,7 +77,7 @@ install_deps() {
     case "$DISTRO_ID" in
         ubuntu|debian|linuxmint|pop|elementary|zorin|kali)
             info "Installing dependencies (apt)..."
-            apt-get update -qq
+            apt-get update -qq || true
             apt-get install -y dkms build-essential linux-headers-"$(uname -r)"
             ;;
         fedora|nobara)
@@ -145,7 +145,7 @@ install_deps() {
             case "$DISTRO_LIKE" in
                 *debian*|*ubuntu*)
                     info "Debian-like distro detected, using apt..."
-                    apt-get update -qq
+                    apt-get update -qq || true
                     apt-get install -y dkms build-essential linux-headers-"$(uname -r)"
                     ;;
                 *fedora*|*rhel*)
