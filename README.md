@@ -50,7 +50,7 @@
 ---
 
 > [!NOTE]
-> ### 🌟 Welcome to OmenCtl (v1.5.1 Release)
+> ### 🌟 Welcome to OmenCtl 
 > **OmenCtl** (formerly *OMEN Command Center for Linux*) is a completely re-engineered, native control suite built to bridge the gap between official Windows tools and Linux. By combining low-level ACPI/WMI registers with beautiful, modern GTK4 interface designs, OmenCtl gives you full dominion over your laptop.
 > 
 > **Here is what OmenCtl accomplishes for your laptop:**
