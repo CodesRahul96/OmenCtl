@@ -54,7 +54,7 @@ from pages.mux_page import MUXPage
 from pages.settings_page import SettingsPage
 from pages.keyboard_page import KeyboardPage
 
-APP_VERSION = "1.5.2"
+APP_VERSION = "1.5.3"
 CONFIG_FILE      = os.path.expanduser("~/.config/hp-manager.toml")
 CONFIG_FILE_JSON = os.path.expanduser("~/.config/hp-manager.json")
 _LAUNCHER_REFRESH_MS = 5000
@@ -3462,6 +3462,11 @@ class HPManagerWindow(Gtk.ApplicationWindow):
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def do_close_request(self):
+        app = self.get_application()
+        if hasattr(app, "tray_icon") and app.tray_icon is not None and not getattr(self, "force_quit", False):
+            self.set_visible(False)
+            return True
+
         self._clear_scroll_tracking()
         if self._ui_scale_tick_id:
             try:
@@ -3484,7 +3489,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
                 except Exception as e:
                     print(f"Cleanup error for {attr}: {e}")
         try:
-            self.get_application().quit()
+            app.quit()
         except Exception as e:
             print(f"Application quit error: {e}")
         return False
@@ -3496,11 +3501,45 @@ class HPManagerApp(Adw.Application if HAS_ADW else Gtk.Application):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.connect('activate', self._on_activate)
+        self.is_hidden = "--hidden" in sys.argv
+        if self.is_hidden:
+            sys.argv.remove("--hidden")
+        self.tray_icon = None
 
     def _on_activate(self, app):
         print("Initializing window...", flush=True)
-        win = HPManagerWindow(application=app)
-        win.present()
+        self.win = HPManagerWindow(application=app)
+        
+        try:
+            import pystray
+            from PIL import Image
+            
+            def create_image():
+                try:
+                    return Image.open(os.path.join(IMAGES_DIR, "omenctl.png"))
+                except Exception:
+                    return Image.new('RGB', (64, 64), color=(0, 0, 0))
+
+            def on_show(icon, item):
+                GLib.idle_add(self.win.present)
+                
+            def on_quit(icon, item):
+                icon.stop()
+                self.win.force_quit = True
+                GLib.idle_add(self.win.close)
+                
+            menu = pystray.Menu(
+                pystray.MenuItem("Show OmenCtl", on_show, default=True),
+                pystray.MenuItem("Quit", on_quit)
+            )
+            self.tray_icon = pystray.Icon("omenctl", create_image(), "OmenCtl", menu)
+            threading.Thread(target=self.tray_icon.run, daemon=True).start()
+            print("Tray icon started.")
+        except ImportError:
+            print("pystray not installed, tray icon disabled.")
+
+        if not self.is_hidden:
+            self.win.present()
 
 
 def main():

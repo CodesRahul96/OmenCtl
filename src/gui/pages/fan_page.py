@@ -1538,6 +1538,12 @@ class FanPage(Gtk.Box):
     def _on_custom_curve_apply(self, _btn):
         if hasattr(self, "fan_curve") and self.fan_curve is not None:
             self.custom_points = self.fan_curve.get_points()
+            if self.service:
+                try:
+                    import json
+                    _dbus_call(self.service.SaveCustomCurve, json.dumps(self.custom_points))
+                except Exception as e:
+                    print(f"Failed to save custom curve: {e}")
         self._set_daemon_fan_mode("custom")
         self._apply_fan_curve()
         self._close_custom_curve_editor()
@@ -1765,9 +1771,17 @@ class FanPage(Gtk.Box):
 
         if self.service:
             try:
-                self._set_daemon_fan_mode("custom")
                 data = self.monitor.get_data()
                 info = data.get("fan_info", {})
+                
+                # Check availability first to avoid flooding
+                if not info.get("available", False):
+                    return
+                    
+                # Only set mode if it's not already custom
+                if info.get("mode", "") != "custom":
+                    self._set_daemon_fan_mode("custom")
+                    
                 fans = info.get("fans", {})
 
                 for fn, fd in fans.items():
@@ -1813,6 +1827,19 @@ class FanPage(Gtk.Box):
         sensors = data.get("all_sensors", [])
         gpu_tgp_state = data.get("gpu_tgp_state", False)
         gpu_ppab_state = data.get("gpu_ppab_state", False)
+
+        if not getattr(self, "_custom_curve_loaded", False):
+            saved_curve_json = fan_info.get("custom_curve", "[]")
+            try:
+                import json
+                saved_curve = json.loads(saved_curve_json)
+                if saved_curve and len(saved_curve) > 0:
+                    self.custom_points = [(p[0], p[1]) for p in saved_curve]
+                    if hasattr(self, "fan_curve") and self.fan_curve is not None:
+                        self.fan_curve.set_points(self.custom_points)
+                self._custom_curve_loaded = True
+            except Exception:
+                pass
 
         # Sync temp history and slider marker using max of CPU and GPU temp to ensure proper cooling response for both
         max_t = max(cpu_t, gpu_t)

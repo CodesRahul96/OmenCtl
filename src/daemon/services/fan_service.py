@@ -287,6 +287,7 @@ class FanService:
         <method name="SetFanMode"><arg type="s" name="mode" direction="in"/><arg type="s" name="resp" direction="out"/></method>
         <method name="SetFanTarget"><arg type="i" name="fan" direction="in"/><arg type="i" name="rpm" direction="in"/><arg type="s" name="resp" direction="out"/></method>
         <method name="GetFanInfo"><arg type="s" name="j" direction="out"/></method>
+        <method name="SaveCustomCurve"><arg type="s" name="curve_json" direction="in"/><arg type="s" name="resp" direction="out"/></method>
         <method name="Ping"><arg type="s" name="resp" direction="out"/></method>
       </interface>
     </node>
@@ -294,7 +295,7 @@ class FanService:
 
     def __init__(self):
         self._fan = FanController()
-        self._config = ServiceConfig("fan", {"fan_mode": "auto"})
+        self._config = ServiceConfig("fan", {"fan_mode": "auto", "custom_curve": "[]"})
         self._config.load()
 
         self._cache_lock = threading.Lock()
@@ -340,6 +341,7 @@ class FanService:
                 "available": self._fan.is_available(),
                 "fan_count": self._fan.get_fan_count(),
                 "mode": self._fan.get_mode(),
+                "custom_curve": self._config.get("custom_curve", "[]"),
                 "fans": fans_data,
             }
 
@@ -365,6 +367,12 @@ class FanService:
     def GetFanInfo(self):
         with self._cache_lock:
             return json.dumps(self._fan_cache)
+
+    def SaveCustomCurve(self, curve_json):
+        logger.info("SaveCustomCurve: %s", curve_json)
+        self._config.set("custom_curve", curve_json)
+        self._config.save()
+        return "OK"
 
     def Ping(self):
         return "OK"

@@ -143,7 +143,9 @@ class PlatformService:
         if self._cpu_temp_path and os.path.exists(self._cpu_temp_path):
             try:
                 with open(self._cpu_temp_path) as f:
-                    return int(f.read().strip()) / 1000.0
+                    t = int(f.read().strip()) / 1000.0
+                    if t > -100.0:
+                        return t
             except Exception: pass
         return 0.0
 
@@ -152,7 +154,9 @@ class PlatformService:
         if self._gpu_temp_path and os.path.exists(self._gpu_temp_path):
             try:
                 with open(self._gpu_temp_path) as f:
-                    stats["temp"] = int(f.read().strip()) / 1000.0
+                    t = int(f.read().strip()) / 1000.0
+                    if t > -100.0:
+                        stats["temp"] = t
             except Exception: pass
 
         if self._has_nvidia_smi:

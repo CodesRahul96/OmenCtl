@@ -2,7 +2,7 @@
 
 pkgname=hp-laptop-manager-git
 _pkgname=HP-Laptop-Manager
-pkgver=1.5.2
+pkgver=1.5.3
 pkgrel=1
 pkgdesc="Advanced HP Omen/Victus laptop manager for Linux with RGB, Fan, and MUX control"
 arch=('x86_64')

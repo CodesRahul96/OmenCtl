@@ -1,4 +1,4 @@
-## OmenControl v1.5.2 ##
+## OmenControl v1.5.3 ##
 <p align="center">
   <img src="images/omenctl.png" alt="OmenCtl Logo" width="180">
 </p>
@@ -100,7 +100,7 @@
 
 ---
 > [!NOTE]
->### Upgrading to v1.5.2
+>### Upgrading to v1.5.3
 >To upgrade your current installation, clean up legacy remnants, and load the new optimized permissions:
 >```bash
 >git clone https://github.com/yunusemreyl/OmenCtl.git

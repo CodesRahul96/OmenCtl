@@ -205,14 +205,15 @@ do_install() {
 
     cd "$SCRIPT_DIR"
 
-    # Tüm eski/artık DKMS girdilerini temizle
-    if dkms status "$MODNAME" 2>/dev/null | grep -q "$MODNAME"; then
-        warn "Removing existing DKMS entries for $MODNAME..."
-        for v in $(dkms status "$MODNAME" | head -n 1 | grep -oP '(?<='"$MODNAME"'[/, ])[^,:]+' | tr -d ' '); do
-            [ -z "$v" ] && continue
-            dkms remove -m "$MODNAME" -v "$v" --all 2>/dev/null || true
-        done
-    fi
+    # Create the source directory and copy files first so that dkms remove has a valid dkms.conf to read
+    # (otherwise dkms remove fails with 'Missing the module source directory')
+    rm -rf "/usr/src/${MODNAME}-${MODVER}"
+    mkdir -p "/usr/src/${MODNAME}-${MODVER}"
+
+    # Copy source files into the DKMS tree
+    cp "$SCRIPT_DIR/dkms.conf" "$SCRIPT_DIR/Makefile" "$SCRIPT_DIR"/*.c \
+       "/usr/src/${MODNAME}-${MODVER}/"
+    cp "$SCRIPT_DIR"/*.h "/usr/src/${MODNAME}-${MODVER}/" 2>/dev/null || true
 
     # Purge stale .ko files from previous installs that may reference
     # removed symbols (e.g. hp_wmi_mutex).  Without this, modprobe may
@@ -223,13 +224,14 @@ do_install() {
         -name 'hp-rgb-lighting.ko*' -delete 2>/dev/null || true
     depmod -a 2>/dev/null || true
 
-    rm -rf "/usr/src/${MODNAME}-${MODVER}"
-    mkdir -p "/usr/src/${MODNAME}-${MODVER}"
-
-    # Copy source files into the DKMS tree
-    cp "$SCRIPT_DIR/dkms.conf" "$SCRIPT_DIR/Makefile" "$SCRIPT_DIR"/*.c \
-       "/usr/src/${MODNAME}-${MODVER}/"
-    cp "$SCRIPT_DIR"/*.h "/usr/src/${MODNAME}-${MODVER}/" 2>/dev/null || true
+    # Tüm eski/artık DKMS girdilerini temizle
+    if dkms status "$MODNAME" 2>/dev/null | grep -q "$MODNAME"; then
+        warn "Removing existing DKMS entries for $MODNAME..."
+        for v in $(dkms status "$MODNAME" | grep -oP '(?<='"$MODNAME"'[/, ])[^,:]+' | tr -d ' ' | sort -u); do
+            [ -z "$v" ] && continue
+            dkms remove -m "$MODNAME" -v "$v" --all 2>/dev/null || true
+        done
+    fi
 
     if $STOCK_FAN_SUPPORT; then
         info "Kernel $(uname -r) detected (>= 7.0) — stock hp-wmi already has Omen fan control."
