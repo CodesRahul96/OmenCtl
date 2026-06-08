@@ -167,8 +167,13 @@ static const char *const omen_thermal_profile_boards[] = {
 	"878A", "878B", "878C", "87B5", "886B", "886C", "88C8", "88CB",
 	"88D1", "88D2", "88F4", "88F5", "88F6", "88F7", "88FD", "88FE",
 	"88FF", "8900", "8901", "8902", "8912", "8917", "8918", "8949",
-	"894A", "89EB", "8A15", "8A42", 	"8BAD", "8BAC", "8BCD", "8C58", "8C77",
-	"8D41", "8E35", "8E41", "8BA9",
+	"894A", "89EB", "8A15", "8A42", "8BAD", "8C58", "8E41",
+	/*
+	 * FIX: 8D41 (HP Omen Max), 8BAC (HP Omen 16-wf0xxx), 8BA9, 8E35,
+	 * 8C77, 8BCD removed from this list so they fall through to the
+	 * Victus S-series thermal profile path, which correctly handles
+	 * boards with no EC thermal profile readback.
+	 */
 };
 
 /*
