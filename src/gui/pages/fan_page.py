@@ -1262,6 +1262,12 @@ class FanPage(Gtk.Box):
         self._pp_conflict_lbl.set_visible(False)
         content.append(self._pp_conflict_lbl)
 
+        # App Profile lock banner
+        self._app_profile_banner = Gtk.Label(label="", use_markup=True, xalign=0.5)
+        self._app_profile_banner.add_css_class("warning-label")
+        self._app_profile_banner.set_visible(False)
+        content.append(self._app_profile_banner)
+
         # ─── 3. OVAL DASHBOARD GRIDS ───
         self.dashboard_grid = Gtk.Grid(column_spacing=18, row_spacing=18)
         self.dashboard_grid.set_column_homogeneous(True)
@@ -1325,7 +1331,7 @@ class FanPage(Gtk.Box):
         # 3. PPAB Toggle Row
         ppab_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         ppab_row.set_valign(Gtk.Align.CENTER)
-        ppab_row.append(Gtk.Image.new_from_icon_name("processor-symbolic"))
+        ppab_row.append(Gtk.Image.new_from_icon_name("cpu-symbolic"))
         ppab_row.append(Gtk.Label(label="PPAB Dynamic Boost", xalign=0, css_classes=["dim-label"]))
         ppab_row.append(Gtk.Label(hexpand=True))
         self.ppab_status_label = Gtk.Label(label=T("inactive"))
@@ -1399,10 +1405,10 @@ class FanPage(Gtk.Box):
             "ram": "Bellek" if lang_is_tr else "Memory",
         }
         icons = {
-            "cpu": "processor-symbolic",
+            "cpu": "cpu-symbolic",
             "disk": "drive-harddisk-symbolic",
             "gpu": "video-display-symbolic",
-            "ram": "media-memory-symbolic",
+            "ram": "memory-symbolic",
         }
 
         for key in ("cpu", "gpu", "ram", "disk"):
@@ -1514,6 +1520,8 @@ class FanPage(Gtk.Box):
                 self.fan_control_custom_btn.remove_css_class("active")
 
     def _open_custom_curve_editor(self):
+        self._pre_override_fan_mode = None
+        self._pre_override_fan_level = None
         self.fan_control_mode = "custom"
         self.fan_control_level = 3
         self._sync_fan_control_buttons(self.fan_control_level)
@@ -1583,6 +1591,8 @@ class FanPage(Gtk.Box):
         return points[-1][1]
 
     def _apply_fan_control_level(self, level):
+        self._pre_override_fan_mode = None
+        self._pre_override_fan_level = None
         level = max(0, min(2, int(level)))
         self.fan_control_level = level
 
@@ -1867,6 +1877,37 @@ class FanPage(Gtk.Box):
         self.disk_bridge.set_val(disk_pct, disk_text)
         self.bat_bridge.set_val(bat_pct, bat_text)
 
+        # Sync fan control mode and level with daemon if it was overridden by app profile/daemon
+        daemon_mode = fan_info.get("mode", "auto")
+        if daemon_mode == "auto" and self.fan_control_mode != "auto":
+            if not getattr(self, "_pre_override_fan_mode", None):
+                self._pre_override_fan_mode = self.fan_control_mode
+                self._pre_override_fan_level = self.fan_control_level
+            self.fan_control_mode = "auto"
+            self.fan_control_level = 0
+            self.last_applied_rpm = {}
+            if hasattr(self, "curve_card") and self.curve_card is not None:
+                self.curve_card.set_reveal_child(False)
+        elif daemon_mode == "max" and self.fan_control_mode != "max":
+            if not getattr(self, "_pre_override_fan_mode", None):
+                self._pre_override_fan_mode = self.fan_control_mode
+                self._pre_override_fan_level = self.fan_control_level
+            self.fan_control_mode = "max"
+            self.fan_control_level = 2
+            self.last_applied_rpm = {}
+            if hasattr(self, "curve_card") and self.curve_card is not None:
+                self.curve_card.set_reveal_child(False)
+        elif daemon_mode == "custom" and self.fan_control_mode not in ("custom", "performance"):
+            if getattr(self, "_pre_override_fan_mode", None) in ("custom", "performance"):
+                self.fan_control_mode = self._pre_override_fan_mode
+                self.fan_control_level = self._pre_override_fan_level
+            else:
+                self.fan_control_mode = "custom"
+                self.fan_control_level = 3
+            self._pre_override_fan_mode = None
+            self._pre_override_fan_level = None
+            self.last_applied_rpm = {}
+
         # Apply fan curve if manual custom fan mode is enabled
         if self.fan_control_mode in ("custom", "performance"):
             self._apply_fan_curve()
@@ -1970,13 +2011,44 @@ class FanPage(Gtk.Box):
 
         # TLP / Auto-cpufreq conflicts
         conflict = data.get("power_conflict")
+        active_app = power_profile.get("active_app")
+        app_profiles_enabled = power_profile.get("app_profiles_enabled", False)
+        app_profile_active = bool(active_app and app_profiles_enabled)
+
+        if app_profile_active:
+            # App profile is overriding — lock profile selector and show banner
+            self.selector_capsule.set_sensitive(False)
+            if hasattr(self, "fan_control_capsule") and self.fan_control_capsule is not None:
+                self.fan_control_capsule.set_sensitive(False)
+            if hasattr(self, "fan_curve") and self.fan_curve is not None:
+                self.fan_curve.set_interactive(False)
+            app_display = str(active_app)
+            banner_text = T("managed_by_app_profile").format(app=app_display)
+            self._app_profile_banner.set_label(
+                f"<span color='#57c494'>{banner_text}</span>")
+            self._app_profile_banner.set_visible(True)
+        else:
+            self._app_profile_banner.set_visible(False)
+            # Only unlock if no TLP conflict either
+            if not conflict:
+                self.selector_capsule.set_sensitive(True)
+                if hasattr(self, "fan_control_capsule") and self.fan_control_capsule is not None:
+                    self.fan_control_capsule.set_sensitive(True)
+                if hasattr(self, "fan_curve") and self.fan_curve is not None and getattr(self, "fan_curve_editor_open", False):
+                    self.fan_curve.set_interactive(True)
+
         if conflict:
             self.selector_capsule.set_sensitive(conflict != "tlp")
             self._pp_conflict_lbl.set_label(
                 f"<span color='#ef5b4a'>{T('power_managed_by').format(tool=conflict.upper())}</span>")
             self._pp_conflict_lbl.set_visible(True)
         else:
-            self.selector_capsule.set_sensitive(True)
+            if not app_profile_active:
+                self.selector_capsule.set_sensitive(True)
+                if hasattr(self, "fan_control_capsule") and self.fan_control_capsule is not None:
+                    self.fan_control_capsule.set_sensitive(True)
+                if hasattr(self, "fan_curve") and self.fan_curve is not None and getattr(self, "fan_curve_editor_open", False):
+                    self.fan_curve.set_interactive(True)
             self._pp_conflict_lbl.set_visible(False)
 
         # Fan service warning

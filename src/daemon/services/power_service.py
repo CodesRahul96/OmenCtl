@@ -12,11 +12,13 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from common.logging_config import setup_logging
 from common.config import ServiceConfig
+from common.app_launchers import get_running_launcher_ids
 from common.dbus_helpers import run_service
 from common.sysfs import (
     normalize_profile_name,
@@ -308,6 +310,8 @@ class PowerService:
       <interface name="com.yyl.hpmanager.power">
         <method name="SetPowerProfile"><arg type="s" name="profile" direction="in"/><arg type="s" name="resp" direction="out"/></method>
         <method name="GetPowerProfile"><arg type="s" name="j" direction="out"/></method>
+        <method name="SetAppProfilesEnabled"><arg type="b" name="enabled" direction="in"/><arg type="s" name="resp" direction="out"/></method>
+        <method name="SetAppProfiles"><arg type="s" name="json_str" direction="in"/><arg type="s" name="resp" direction="out"/></method>
         <method name="Ping"><arg type="s" name="resp" direction="out"/></method>
       </interface>
     </node>
@@ -315,7 +319,11 @@ class PowerService:
 
     def __init__(self):
         self._ctrl = PowerProfileController()
-        self._config = ServiceConfig("power", {"power_profile": "balanced"})
+        self._config = ServiceConfig("power", {
+            "power_profile": "balanced",
+            "app_profiles_enabled": False,
+            "app_profiles": {}
+        })
         self._config.load()
 
         # Restore saved profile
@@ -328,6 +336,130 @@ class PowerService:
                 else:
                     logger.info("Power profile already '%s', skipping", saved)
 
+        self._matched_app = None
+        self._original_fan_mode = None
+        # Start background app profiles monitor
+        self._monitor_thread = threading.Thread(target=self._app_monitor_loop, daemon=True)
+        self._monitor_thread.start()
+
+    def _get_running_process_names(self):
+        names = set()
+        try:
+            for pid_dir in os.listdir("/proc"):
+                if not pid_dir.isdigit():
+                    continue
+                try:
+                    # Read comm (command name)
+                    with open(f"/proc/{pid_dir}/comm", "r", errors="ignore") as f:
+                        comm = f.read().strip().lower()
+                        if comm:
+                            names.add(comm)
+                    # Read cmdline (args/path)
+                    with open(f"/proc/{pid_dir}/cmdline", "r", errors="ignore") as f:
+                        cmd = f.read().replace("\x00", " ").strip().lower()
+                        if cmd:
+                            for token in cmd.split():
+                                base = os.path.basename(token)
+                                if base:
+                                    names.add(base)
+                    # Read environ to check for launcher App IDs
+                    names.update(get_running_launcher_ids(pid_dir))
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.warning("Failed to scan /proc: %s", e)
+        return names
+
+    def _app_monitor_loop(self):
+        # Allow system services to settle
+        time.sleep(5)
+        while True:
+            try:
+                enabled = self._config.get("app_profiles_enabled", False)
+                app_profiles = self._config.get("app_profiles", {})
+                user_profile = self._config.get("power_profile", "balanced")
+
+                matched_app = None
+                matched_profile = None
+                matched_fan_mode = "default"
+
+                if enabled and app_profiles:
+                    running = self._get_running_process_names()
+                    for app_name, val in app_profiles.items():
+                        profile = val.get("profile", "balanced") if isinstance(val, dict) else val
+                        fan_mode = val.get("fan_mode", "default") if isinstance(val, dict) else "default"
+                        app_lower = app_name.lower()
+                        if app_lower in running:
+                            matched_app = app_name
+                            matched_profile = profile
+                            matched_fan_mode = fan_mode
+                            break
+                        
+                        # Check substring match
+                        for r in running:
+                            if app_lower in r:
+                                matched_app = app_name
+                                matched_profile = profile
+                                matched_fan_mode = fan_mode
+                                break
+                        if matched_app:
+                            break
+
+                self._matched_app = matched_app
+                if matched_app:
+                    current_applied = self._ctrl.get_active()
+                    if current_applied != matched_profile:
+                        logger.info(
+                            "App Profiles: Detected target app '%s' running, switching profile to '%s' (user default: '%s')",
+                            matched_app, matched_profile, user_profile
+                        )
+                        self._ctrl.set_profile(matched_profile)
+                    
+                    if matched_fan_mode and matched_fan_mode != "default":
+                        current_fan = self._get_system_fan_mode()
+                        if current_fan != matched_fan_mode:
+                            if self._original_fan_mode is None:
+                                self._original_fan_mode = current_fan
+                            logger.info("App Profiles: Switching fan mode to '%s' (was '%s')", matched_fan_mode, current_fan)
+                            self._set_system_fan_mode(matched_fan_mode)
+                else:
+                    current_applied = self._ctrl.get_active()
+                    if current_applied != user_profile:
+                        logger.info(
+                            "App Profiles: Restoring user profile '%s' (was '%s')",
+                            user_profile, current_applied
+                        )
+                        self._ctrl.set_profile(user_profile)
+                    
+                    if self._original_fan_mode is not None:
+                        logger.info("App Profiles: Restoring fan mode to '%s'", self._original_fan_mode)
+                        self._set_system_fan_mode(self._original_fan_mode)
+                        self._original_fan_mode = None
+
+            except Exception as e:
+                logger.warning("Error in app monitor loop: %s", e)
+
+            time.sleep(4)
+
+    def _get_system_fan_mode(self):
+        try:
+            bus = SystemBus()
+            fan_svc = bus.get("com.yyl.hpmanager.fan")
+            info_json = fan_svc.GetFanInfo()
+            info = json.loads(info_json)
+            return info.get("mode", "auto")
+        except Exception as e:
+            logger.warning("Failed to query fan mode via D-Bus: %s", e)
+            return "auto"
+
+    def _set_system_fan_mode(self, mode):
+        try:
+            bus = SystemBus()
+            fan_svc = bus.get("com.yyl.hpmanager.fan")
+            fan_svc.SetFanMode(mode)
+        except Exception as e:
+            logger.error("Failed to set fan mode via D-Bus: %s", e)
+
     def SetPowerProfile(self, profile):
         if profile not in self._ctrl.get_profiles():
             return "FAIL"
@@ -337,12 +469,45 @@ class PowerService:
             self._config.save()
         return "OK" if ok else "FAIL"
 
+    def SetAppProfilesEnabled(self, enabled):
+        self._config.set("app_profiles_enabled", bool(enabled))
+        self._config.save()
+        logger.info("App Profiles Enabled: %s", enabled)
+        return "OK"
+
+    def SetAppProfiles(self, json_str):
+        try:
+            mapping = json.loads(json_str)
+            if not isinstance(mapping, dict):
+                return "FAIL"
+            for app, val in mapping.items():
+                profile_name = val.get("profile") if isinstance(val, dict) else val
+                if profile_name not in self._ctrl.get_profiles():
+                    return "FAIL"
+                if isinstance(val, dict):
+                    fan_mode = val.get("fan_mode", "default")
+                    if fan_mode not in ("default", "auto", "max"):
+                        return "FAIL"
+                    theme = val.get("theme", "default")
+                    if theme not in ("default", "dark", "light"):
+                        return "FAIL"
+            self._config.set("app_profiles", mapping)
+            self._config.save()
+            logger.info("App Profiles Updated: %s", mapping)
+            return "OK"
+        except Exception as e:
+            logger.error("Failed to parse app profiles: %s", e)
+            return "FAIL"
+
     def GetPowerProfile(self):
         return json.dumps(
             {
                 "available": self._ctrl.available,
                 "active": self._ctrl.get_active(),
                 "profiles": self._ctrl.get_profiles(),
+                "app_profiles_enabled": self._config.get("app_profiles_enabled", False),
+                "app_profiles": self._config.get("app_profiles", {}),
+                "active_app": getattr(self, "_matched_app", None),
             }
         )
 

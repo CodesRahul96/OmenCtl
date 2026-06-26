@@ -82,6 +82,8 @@ class LightingPage(Gtk.Box):
 
     def _sync_state(self):
         if not self.service:
+            if not os.path.exists("/sys/module/hp_rgb_lighting"):
+                GLib.idle_add(self.view_stack.set_visible_child_name, "unsupported")
             return
         
         # Run DBus call in background to avoid freezing the UI transition
@@ -96,6 +98,26 @@ class LightingPage(Gtk.Box):
 
     def _apply_state(self, st):
         try:
+            rgb_available = st.get("rgb_available", True)
+            rgb_supported = st.get("rgb_supported", True)
+            brightness_supported = st.get("brightness_supported", True)
+
+            if not rgb_available and not brightness_supported:
+                self.view_stack.set_visible_child_name("unsupported")
+                return False
+            else:
+                self.view_stack.set_visible_child_name("supported")
+
+            # Show/hide widgets based on RGB support
+            self.preview_frame.set_visible(rgb_supported)
+            if hasattr(self, "zone_box") and self.zone_box:
+                self.zone_box.set_visible(rgb_supported)
+            self.color_separator.set_visible(rgb_supported)
+            self.color_box.set_visible(rgb_supported)
+            self.effects_separator.set_visible(rgb_supported)
+            self._effects_grid.set_visible(rgb_supported)
+            self.status_box.set_visible(not rgb_supported)
+
             self.power = st.get("power", True)
             self.mode = st.get("mode", "static")
             self.speed = st.get("speed", 50)
@@ -106,25 +128,36 @@ class LightingPage(Gtk.Box):
             self.brightness_scale.set_value(self.brightness)
             self.speed_scale.set_value(self.speed)
 
-            modes = ["static", "breathing", "wave", "cycle"]
-            if self.mode in modes:
-                self.mode_dd.set_selected(modes.index(self.mode))
+            if not rgb_supported:
+                self.status_note.set_label(T("backlight_note"))
+                if self.power:
+                    self.status_lbl.set_label(T("backlight_active"))
+                    self.status_icon.set_opacity(1.0)
+                    self.status_icon.add_css_class("keyboard-active")
+                else:
+                    self.status_lbl.set_label(T("backlight_off"))
+                    self.status_icon.set_opacity(0.4)
+                    self.status_icon.remove_css_class("keyboard-active")
+            else:
+                modes = ["static", "breathing", "wave", "cycle"]
+                if self.mode in modes:
+                    self.mode_dd.set_selected(modes.index(self.mode))
 
-            self.dir_dd.set_selected(0 if self.direction == "ltr" else 1)
+                self.dir_dd.set_selected(0 if self.direction == "ltr" else 1)
 
-            colors = st.get("colors", ["FF0000"] * 8)
-            for i in range(min(len(colors), 8)):
-                c = Gdk.RGBA()
-                c.parse(f"#{colors[i]}")
-                self.zone_rgba[i] = c
-                self.kb_preview.set_zone_color(i, c.red, c.green, c.blue, redraw=False)
+                colors = st.get("colors", ["FF0000"] * 8)
+                for i in range(min(len(colors), 8)):
+                    c = Gdk.RGBA()
+                    c.parse(f"#{colors[i]}")
+                    self.zone_rgba[i] = c
+                    self.kb_preview.set_zone_color(i, c.red, c.green, c.blue, redraw=False)
 
-            self.kb_preview.power = self.power
-            self.kb_preview.mode = self.mode
-            self.kb_preview.speed = self.speed
-            self.kb_preview.brightness = self.brightness
-            self.kb_preview.direction = self.direction
-            self.kb_preview.queue_draw()
+                self.kb_preview.power = self.power
+                self.kb_preview.mode = self.mode
+                self.kb_preview.speed = self.speed
+                self.kb_preview.brightness = self.brightness
+                self.kb_preview.direction = self.direction
+                self.kb_preview.queue_draw()
         except Exception: pass
         return False
 
@@ -133,6 +166,12 @@ class LightingPage(Gtk.Box):
         title.add_css_class("page-title")
         self.append(title)
 
+        self.view_stack = Gtk.Stack()
+        self.view_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.view_stack.set_transition_duration(150)
+        self.append(self.view_stack)
+
+        # ─── 1. Supported View ───
         scroll = Gtk.ScrolledWindow(vexpand=True)
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
@@ -144,10 +183,13 @@ class LightingPage(Gtk.Box):
         self.kb_preview = KeyboardPreview()
         preview_frame.append(self.kb_preview)
         content.append(preview_frame)
+        self.preview_frame = preview_frame
 
         # Zone Selection (Omen only)
+        self.zone_box = None
         if self.num_zones == 4:
             zone_box = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
+            self.zone_box = zone_box
             self.zone_group = None
             zones = [f"{T('zone')} {i+1}" for i in range(4)] + [T("all_zones")]
             for i, label in enumerate(zones):
@@ -164,6 +206,28 @@ class LightingPage(Gtk.Box):
                 self._zone_buttons.append(btn)
             content.append(zone_box)
 
+        # Backlight status box (for non-RGB keyboards)
+        status_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, halign=Gtk.Align.CENTER)
+        status_box.set_margin_top(20)
+        status_box.set_margin_bottom(20)
+        
+        self.status_icon = Gtk.Image.new_from_icon_name("input-keyboard-symbolic")
+        self.status_icon.set_pixel_size(64)
+        self.status_icon.add_css_class("dim-label")
+        status_box.append(self.status_icon)
+        
+        self.status_lbl = Gtk.Label(label="", css_classes=["title-4"])
+        status_box.append(self.status_lbl)
+        
+        self.status_note = Gtk.Label(label="", css_classes=["dim-label"])
+        self.status_note.set_wrap(True)
+        self.status_note.set_max_width_chars(50)
+        self.status_note.set_justify(Gtk.Justification.CENTER)
+        status_box.append(self.status_note)
+        
+        self.status_box = status_box
+        content.append(status_box)
+
         # Controls Card
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
         card.add_css_class("card")
@@ -178,9 +242,11 @@ class LightingPage(Gtk.Box):
         power_box.append(self.sw)
         row1.append(power_box)
 
-        row1.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
+        self.color_separator = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        row1.append(self.color_separator)
 
         color_box = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
+        self.color_box = color_box
         
         # We need a CSS provider to inject dynamic CSS for glows
         self.preset_css_provider = Gtk.CssProvider()
@@ -212,6 +278,15 @@ class LightingPage(Gtk.Box):
                 box-shadow: 0px 0px 14px {hex_color}, inset 0px 0px 4px rgba(255,255,255,0.6);
             }}
             """
+        
+        # Add a custom class for the keyboard status icon glow
+        dyn_css += """
+        .keyboard-active {
+            color: #3583e4;
+            filter: drop-shadow(0px 0px 8px #3583e4);
+            transition: all 0.3s ease;
+        }
+        """
             
         self.preset_css_provider.load_from_data(dyn_css.encode('utf-8'))
 
@@ -225,7 +300,8 @@ class LightingPage(Gtk.Box):
         card.append(row1)
         self._controls_card = card
 
-        card.append(Gtk.Separator())
+        self.effects_separator = Gtk.Separator()
+        card.append(self.effects_separator)
 
         # Effect controls
         grid = Gtk.Grid(column_spacing=30, row_spacing=15, halign=Gtk.Align.CENTER)
@@ -262,7 +338,38 @@ class LightingPage(Gtk.Box):
         content.append(card)
 
         scroll.set_child(content)
-        self.append(scroll)
+        self.view_stack.add_named(scroll, "supported")
+
+        # ─── 2. Unsupported View ───
+        unsupported_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
+        unsupported_box.set_vexpand(True)
+        unsupported_box.set_hexpand(True)
+        unsupported_box.add_css_class("card")
+        unsupported_box.set_margin_start(40)
+        unsupported_box.set_margin_end(40)
+        unsupported_box.set_margin_top(40)
+        unsupported_box.set_margin_bottom(40)
+
+        # Large icon
+        icon = Gtk.Image.new_from_icon_name("input-keyboard-symbolic")
+        icon.set_pixel_size(64)
+        icon.add_css_class("dim-label")
+        unsupported_box.append(icon)
+
+        # Title
+        unsupported_title = Gtk.Label(label=T("rgb_not_supported"), css_classes=["title-2"])
+        unsupported_box.append(unsupported_title)
+
+        # Description
+        unsupported_desc = Gtk.Label(label=T("rgb_not_supported_desc"), css_classes=["dim-label"])
+        unsupported_desc.set_wrap(True)
+        unsupported_desc.set_max_width_chars(50)
+        unsupported_desc.set_justify(Gtk.Justification.CENTER)
+        unsupported_box.append(unsupported_desc)
+
+        self.view_stack.add_named(unsupported_box, "unsupported")
+
+        self.view_stack.set_visible_child_name("supported")
         self.set_ui_scale("normal")
 
     def set_ui_scale(self, bucket, _width=0, _height=0):

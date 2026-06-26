@@ -38,10 +38,34 @@ class RGBController:
     def __init__(self):
         self.driver_path = self._find_rgb_path()
         self.available = self.driver_path is not None
+        self.rgb_supported = self.available
+        self.brightness_supported = self.available and os.path.exists(f"{self.driver_path}/brightness")
         self.last_written = [None] * 8
         self.reversed = True
         self._fds: typing.Dict[int, typing.IO] = {}
-        if self.available:
+        
+        # Test if the RGB hardware is actually present and functional.
+        # On non-RGB hardware (like Victus 15), the hp-rgb-lighting driver is loaded
+        # and creates sysfs nodes, but writing to them is ignored and reading them
+        # always returns "000000" (or fails to match the written value).
+        if self.rgb_supported:
+            try:
+                # Write a test pattern to zone0
+                with open(f"{self.driver_path}/zone0", "w") as f:
+                    f.write("FF0000")
+                # Wait briefly for driver/WMI sync
+                time.sleep(0.01)
+                # Read it back
+                with open(f"{self.driver_path}/zone0", "r") as f:
+                    val = f.read().strip()
+                if val != "FF0000":
+                    logger.info("RGB: Write test failed (read back '%s' instead of 'FF0000'). Disabling RGB support.", val)
+                    self.rgb_supported = False
+            except Exception as e:
+                logger.warning("RGB: Write test failed with error: %s. Disabling RGB support.", e)
+                self.rgb_supported = False
+
+        if self.available and self.rgb_supported:
             for i in range(8):
                 try:
                     self._fds[i] = open(f"{self.driver_path}/zone{i}", "w")
@@ -74,7 +98,7 @@ class RGBController:
         return self.available
 
     def write_zone(self, zone, hex_color):
-        if not self.available or not (0 <= zone <= 7):
+        if not self.available or not self.rgb_supported or not (0 <= zone <= 7):
             return
 
         target_zone = zone
@@ -107,6 +131,8 @@ class RGBController:
                 pass
 
     def write_all(self, hex_list):
+        if not self.rgb_supported:
+            return
         for i, hc in enumerate(hex_list[:8]):
             self.write_zone(i, hc)
 
@@ -179,7 +205,8 @@ class AnimationEngine(threading.Thread):
 
             if not pwr:
                 self.rgb.write_brightness(False)
-                self.rgb.write_all(["000000"] * 8)
+                if self.rgb.rgb_supported:
+                    self.rgb.write_all(["000000"] * 8)
                 self._last_uniform = (-1, -1, -1)
                 self._last_wave = [(-1, -1, -1)] * 8
                 self.config.changed.clear()
@@ -187,6 +214,11 @@ class AnimationEngine(threading.Thread):
                 continue
 
             self.rgb.write_brightness(True)
+            if not self.rgb.rgb_supported:
+                self.config.changed.clear()
+                self.config.changed.wait()
+                continue
+
             t = time.time()
 
             if mode == "static":
@@ -395,7 +427,11 @@ class RGBService:
         return "OK"
 
     def GetState(self):
-        return json.dumps(self._config.snapshot())
+        data = self._config.snapshot()
+        data["rgb_available"] = self._rgb.is_available()
+        data["rgb_supported"] = getattr(self._rgb, "rgb_supported", True)
+        data["brightness_supported"] = getattr(self._rgb, "brightness_supported", True)
+        return json.dumps(data)
 
     def SetWinLock(self, locked):
         logger.info("SetWinLock: %s", "LOCKED" if locked else "UNLOCKED")

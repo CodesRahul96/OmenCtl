@@ -113,7 +113,8 @@ class FanController:
             return
         for i in self.found_fans:
             max_path = os.path.join(self.hwmon_path, f"fan{i}_max")
-            self.max_speeds[i] = sysfs_read(max_path, 6000)
+            # Read actual max; keep 0 as-is (means fan not present / single-fan board)
+            self.max_speeds[i] = sysfs_read(max_path, 0)
 
     def _read_current_mode(self):
         if not self.hwmon_path:
@@ -224,9 +225,24 @@ class FanController:
         if not self.hwmon_path or fan_num not in self.found_fans:
             logger.debug("set_fan_target: invalid fan_num=%s or no hwmon", fan_num)
             return False
-        rpm = max(0, min(rpm, self.get_max_speed(fan_num)))
+
+        max_spd = self.get_max_speed(fan_num)
+        if max_spd == 0:
+            # Fan channel not present on this hardware (e.g. single-fan Victus 15).
+            # Report success silently so callers don't treat it as a hard error.
+            logger.debug("Fan %d: max_speed=0, skipping target write (fan not present)", fan_num)
+            return True
+
+        rpm = max(0, min(rpm, max_spd))
         path = os.path.join(self.hwmon_path, f"fan{fan_num}_target")
         if sysfs_exists(path):
+            # Victus-S driver requires pwm1_enable=1 (MANUAL) before fan target
+            # writes take effect. Ensure we are in manual mode first.
+            enable_path = os.path.join(self.hwmon_path, "pwm1_enable")
+            if sysfs_exists(enable_path) and self.get_mode() != "custom":
+                if not self.set_mode("custom"):
+                    logger.warning("Fan %d: failed to switch to custom mode before target write", fan_num)
+                    return False
             ok = sysfs_write(path, rpm)
         elif self._has_pwm_fallback():
             ok = self._set_pwm_fallback_target(fan_num, rpm)
@@ -268,6 +284,10 @@ class FanController:
 
     def is_available(self):
         return self.hwmon_path is not None and self.fan_count > 0
+
+    def get_active_fan_count(self):
+        """Return the number of fans with max_speed > 0 (physically present)."""
+        return sum(1 for i in self.found_fans if self.max_speeds.get(i, 0) > 0)
 
     def get_mode(self):
         if self.hwmon_path:
@@ -336,10 +356,12 @@ class FanService:
                     "target": self._fan.get_target_speed(i),
                 }
                 for i in self._fan.found_fans
+                if self._fan.get_max_speed(i) > 0  # skip absent fans (max==0)
             }
             snapshot = {
                 "available": self._fan.is_available(),
                 "fan_count": self._fan.get_fan_count(),
+                "active_fan_count": self._fan.get_active_fan_count(),
                 "mode": self._fan.get_mode(),
                 "custom_curve": self._config.get("custom_curve", "[]"),
                 "fans": fans_data,

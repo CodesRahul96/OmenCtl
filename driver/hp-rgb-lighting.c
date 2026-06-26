@@ -238,7 +238,7 @@ static ssize_t zone_store(struct device *dev, struct device_attribute *attr,
 /* ── brightness on/off ── */
 static ssize_t brightness_show(struct device *dev,
                                struct device_attribute *attr, char *buf) {
-  u8 data = 0;
+  u32 data = 0;
   int ret;
 
   mutex_lock(&rgb_mutex);
@@ -246,6 +246,8 @@ static ssize_t brightness_show(struct device *dev,
                        sizeof(data), sizeof(data));
   mutex_unlock(&rgb_mutex);
   
+  pr_err("hp-rgb-lighting: brightness_show: query returned %d, data 0x%08X\n", ret, data);
+
   if (ret)
     return ret;
 
@@ -257,7 +259,7 @@ static ssize_t brightness_store(struct device *dev,
                                 struct device_attribute *attr, const char *buf,
                                 size_t count) {
   unsigned int val;
-  u8 data;
+  u32 data;
   int ret;
 
   if (kstrtouint(buf, 10, &val))
@@ -269,9 +271,11 @@ static ssize_t brightness_store(struct device *dev,
   
   mutex_lock(&rgb_mutex);
   ret = hp_wmi_perform_query(HPWMI_BRIGHTNESS_SET_QUERY, HPWMI_BACKLIGHT, &data,
-                       sizeof(data), sizeof(data));
+                       sizeof(data), 0);
   mutex_unlock(&rgb_mutex);
   
+  pr_err("hp-rgb-lighting: brightness_store(val=%d, data=0x%08X): query returned %d\n", val, data, ret);
+
   return ret ? ret : count;
 }
 
