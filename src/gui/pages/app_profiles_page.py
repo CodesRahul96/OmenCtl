@@ -101,38 +101,70 @@ class AppProfilesPage(Gtk.Box):
         self._add_card = add_card
         add_card.append(Gtk.Label(label=T("add"), xalign=0, css_classes=["heading"]))
 
-        form_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, valign=Gtk.Align.CENTER)
+        form_grid = Gtk.Grid(column_spacing=24, row_spacing=18, hexpand=True, column_homogeneous=True)
         
+        # Row 0: App Name and Category
+        app_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, hexpand=True)
+        app_box.append(Gtk.Label(label=T("app_name"), xalign=0, css_classes=["dim-label"]))
         self.add_app_entry = Gtk.Entry()
         self.add_app_entry.set_placeholder_text(T("placeholder_app"))
-        self.add_app_entry.set_hexpand(True)
         self.add_app_entry.set_valign(Gtk.Align.CENTER)
-        form_box.append(self.add_app_entry)
+        app_box.append(self.add_app_entry)
+        form_grid.attach(app_box, 0, 0, 1, 1)
         
-        self.add_profile_dd = Gtk.DropDown(model=Gtk.StringList.new([T("saver"), T("balanced"), T("performance")]))
-        self.add_profile_dd.set_valign(Gtk.Align.CENTER)
-        form_box.append(self.add_profile_dd)
-        
+        cat_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, hexpand=True)
+        cat_box.append(Gtk.Label(label=T("category"), xalign=0, css_classes=["dim-label"]))
         self.add_category_dd = Gtk.DropDown(model=Gtk.StringList.new([T("game"), T("program"), T("other")]))
         self.add_category_dd.set_valign(Gtk.Align.CENTER)
-        form_box.append(self.add_category_dd)
+        cat_box.append(self.add_category_dd)
+        form_grid.attach(cat_box, 1, 0, 1, 1)
+
+        # Row 1: Profile and Fan Mode
+        profile_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, hexpand=True)
+        profile_box.append(Gtk.Label(label=T("power_profile_label"), xalign=0, css_classes=["dim-label"]))
+        self.add_profile_dd = Gtk.DropDown(model=Gtk.StringList.new([T("saver"), T("balanced"), T("performance")]))
+        self.add_profile_dd.set_valign(Gtk.Align.CENTER)
+        profile_box.append(self.add_profile_dd)
+        form_grid.attach(profile_box, 0, 1, 1, 1)
         
+        fan_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, hexpand=True)
+        fan_box.append(Gtk.Label(label=T("fan_mode_label"), xalign=0, css_classes=["dim-label"]))
         self.add_fan_dd = Gtk.DropDown(model=Gtk.StringList.new([T("fan_default"), T("fan_auto"), T("fan_max")]))
         self.add_fan_dd.set_valign(Gtk.Align.CENTER)
-        form_box.append(self.add_fan_dd)
+        fan_box.append(self.add_fan_dd)
+        form_grid.attach(fan_box, 1, 1, 1, 1)
         
+        # Row 2: Theme Override and RGB Lighting
+        theme_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, hexpand=True)
+        theme_box.append(Gtk.Label(label=T("theme_label"), xalign=0, css_classes=["dim-label"]))
         self.add_theme_dd = Gtk.DropDown(model=Gtk.StringList.new([T("theme_default"), T("theme_dark"), T("theme_light")]))
         self.add_theme_dd.set_valign(Gtk.Align.CENTER)
         self.add_theme_dd.set_tooltip_text(T("theme_label"))
-        form_box.append(self.add_theme_dd)
+        theme_box.append(self.add_theme_dd)
+        form_grid.attach(theme_box, 0, 2, 1, 1)
         
+        rgb_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, hexpand=True)
+        rgb_box.append(Gtk.Label(label=T("lighting"), xalign=0, css_classes=["dim-label"]))
+        self.add_rgb_dd = Gtk.DropDown(model=Gtk.StringList.new([
+            T("rgb_default"), T("rgb_static_red"), T("rgb_static_green"), 
+            T("rgb_static_blue"), T("rgb_static_white"), T("rgb_breathing"), 
+            T("rgb_cycle"), T("rgb_wave")
+        ]))
+        self.add_rgb_dd.set_valign(Gtk.Align.CENTER)
+        self.add_rgb_dd.set_tooltip_text(T("lighting"))
+        rgb_box.append(self.add_rgb_dd)
+        form_grid.attach(rgb_box, 1, 2, 1, 1)
+        
+        # Row 3: Add Button
         add_btn = Gtk.Button(label=T("add"))
         add_btn.add_css_class("suggested-action")
         add_btn.set_valign(Gtk.Align.CENTER)
+        add_btn.set_halign(Gtk.Align.END)
+        add_btn.set_size_request(160, -1)
         add_btn.connect("clicked", self._add_app_profile)
-        form_box.append(add_btn)
+        form_grid.attach(add_btn, 1, 3, 1, 1)
         
-        add_card.append(form_box)
+        add_card.append(form_grid)
         root.append(add_card)
 
         # ── Configuration Mappings List Card ──
@@ -333,9 +365,10 @@ class AppProfilesPage(Gtk.Box):
                     lbl = Gtk.Label(xalign=0, hexpand=True, halign=Gtk.Align.START, css_classes=["title-4"])
                     lbl.set_markup(lbl_text)
                     
-                    # Extract fan mode and theme
+                    # Extract fan mode, theme and RGB mode
                     fan_mode = val.get("fan_mode", "default") if isinstance(val, dict) else "default"
                     theme = val.get("theme", "default") if isinstance(val, dict) else "default"
+                    rgb = val.get("rgb", "default") if isinstance(val, dict) else "default"
                     
                     p_text = T("saver") if profile == "power-saver" else T("balanced") if profile == "balanced" else T("performance")
                     meta_parts = [p_text]
@@ -346,6 +379,15 @@ class AppProfilesPage(Gtk.Box):
                         meta_parts.append("\U0001f319")  # 🌙
                     elif theme == "light":
                         meta_parts.append("\u2600\ufe0f")   # ☀️
+                    if rgb and rgb != "default":
+                        rgb_text = T("rgb_static_red") if rgb == "static_red" else \
+                                   T("rgb_static_green") if rgb == "static_green" else \
+                                   T("rgb_static_blue") if rgb == "static_blue" else \
+                                   T("rgb_static_white") if rgb == "static_white" else \
+                                   T("rgb_breathing") if rgb == "breathing" else \
+                                   T("rgb_cycle") if rgb == "cycle" else \
+                                   T("rgb_wave")
+                        meta_parts.append(f"💡 {rgb_text}")
                     lbl_settings = " • ".join(meta_parts)
                         
                     profile_lbl = Gtk.Label(label=lbl_settings, xalign=0, halign=Gtk.Align.END, css_classes=["dim-label"])
@@ -402,6 +444,14 @@ class AppProfilesPage(Gtk.Box):
         theme_map = {0: "default", 1: "dark", 2: "light"}
         theme = theme_map.get(theme_idx, "default")
         
+        rgb_idx = self.add_rgb_dd.get_selected()
+        rgb_map = {
+            0: "default", 1: "static_red", 2: "static_green",
+            3: "static_blue", 4: "static_white", 5: "breathing",
+            6: "cycle", 7: "wave"
+        }
+        rgb = rgb_map.get(rgb_idx, "default")
+        
         # Check if we have a mapped suggestion selected
         exec_name = getattr(self, "_selected_exec_name", None)
         if not exec_name:
@@ -420,6 +470,7 @@ class AppProfilesPage(Gtk.Box):
                 "name": display_name,
                 "fan_mode": fan_mode,
                 "theme": theme,
+                "rgb": rgb,
             }
             
             self.power_service.SetAppProfiles(json.dumps(app_profiles))

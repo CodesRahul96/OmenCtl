@@ -338,22 +338,39 @@ class PowerService:
 
         self._matched_app = None
         self._original_fan_mode = None
+        self._original_rgb_state = None
+        self._proc_cache = {}
         # Start background app profiles monitor
         self._monitor_thread = threading.Thread(target=self._app_monitor_loop, daemon=True)
         self._monitor_thread.start()
 
     def _get_running_process_names(self):
         names = set()
+        new_cache = {}
         try:
             for pid_dir in os.listdir("/proc"):
                 if not pid_dir.isdigit():
                     continue
+                pid = int(pid_dir)
+                try:
+                    mtime = os.path.getmtime(f"/proc/{pid_dir}")
+                except Exception:
+                    continue
+
+                cached_val = self._proc_cache.get(pid)
+                if cached_val and cached_val["mtime"] == mtime:
+                    names.update(cached_val["names"])
+                    new_cache[pid] = cached_val
+                    continue
+
+                # Cache miss: read process info
+                pid_names = set()
                 try:
                     # Read comm (command name)
                     with open(f"/proc/{pid_dir}/comm", "r", errors="ignore") as f:
                         comm = f.read().strip().lower()
                         if comm:
-                            names.add(comm)
+                            pid_names.add(comm)
                     # Read cmdline (args/path)
                     with open(f"/proc/{pid_dir}/cmdline", "r", errors="ignore") as f:
                         cmd = f.read().replace("\x00", " ").strip().lower()
@@ -361,11 +378,16 @@ class PowerService:
                             for token in cmd.split():
                                 base = os.path.basename(token)
                                 if base:
-                                    names.add(base)
+                                    pid_names.add(base)
                     # Read environ to check for launcher App IDs
-                    names.update(get_running_launcher_ids(pid_dir))
+                    pid_names.update(get_running_launcher_ids(pid_dir))
                 except Exception:
-                    continue
+                    pass
+
+                new_cache[pid] = {"mtime": mtime, "names": pid_names}
+                names.update(pid_names)
+            
+            self._proc_cache = new_cache
         except Exception as e:
             logger.warning("Failed to scan /proc: %s", e)
         return names
@@ -382,17 +404,20 @@ class PowerService:
                 matched_app = None
                 matched_profile = None
                 matched_fan_mode = "default"
+                matched_rgb_mode = "default"
 
                 if enabled and app_profiles:
                     running = self._get_running_process_names()
                     for app_name, val in app_profiles.items():
                         profile = val.get("profile", "balanced") if isinstance(val, dict) else val
                         fan_mode = val.get("fan_mode", "default") if isinstance(val, dict) else "default"
+                        rgb_mode = val.get("rgb", "default") if isinstance(val, dict) else "default"
                         app_lower = app_name.lower()
                         if app_lower in running:
                             matched_app = app_name
                             matched_profile = profile
                             matched_fan_mode = fan_mode
+                            matched_rgb_mode = rgb_mode
                             break
                         
                         # Check substring match
@@ -401,6 +426,7 @@ class PowerService:
                                 matched_app = app_name
                                 matched_profile = profile
                                 matched_fan_mode = fan_mode
+                                matched_rgb_mode = rgb_mode
                                 break
                         if matched_app:
                             break
@@ -422,6 +448,14 @@ class PowerService:
                                 self._original_fan_mode = current_fan
                             logger.info("App Profiles: Switching fan mode to '%s' (was '%s')", matched_fan_mode, current_fan)
                             self._set_system_fan_mode(matched_fan_mode)
+
+                    if matched_rgb_mode and matched_rgb_mode != "default":
+                        if self._original_rgb_state is None:
+                            current_rgb = self._get_system_rgb_state()
+                            if current_rgb:
+                                self._original_rgb_state = current_rgb
+                            logger.info("App Profiles: Switching RGB state to '%s'", matched_rgb_mode)
+                            self._set_system_rgb_state(matched_rgb_mode)
                 else:
                     current_applied = self._ctrl.get_active()
                     if current_applied != user_profile:
@@ -435,6 +469,11 @@ class PowerService:
                         logger.info("App Profiles: Restoring fan mode to '%s'", self._original_fan_mode)
                         self._set_system_fan_mode(self._original_fan_mode)
                         self._original_fan_mode = None
+
+                    if self._original_rgb_state is not None:
+                        logger.info("App Profiles: Restoring RGB state")
+                        self._set_system_rgb_state(self._original_rgb_state)
+                        self._original_rgb_state = None
 
             except Exception as e:
                 logger.warning("Error in app monitor loop: %s", e)
@@ -459,6 +498,48 @@ class PowerService:
             fan_svc.SetFanMode(mode)
         except Exception as e:
             logger.error("Failed to set fan mode via D-Bus: %s", e)
+
+    def _get_system_rgb_state(self):
+        try:
+            bus = SystemBus()
+            rgb_svc = bus.get("com.yyl.hpmanager.rgb")
+            state_json = rgb_svc.GetState()
+            return json.loads(state_json)
+        except Exception as e:
+            logger.warning("Failed to query RGB state via D-Bus: %s", e)
+            return None
+
+    def _set_system_rgb_state(self, state):
+        try:
+            bus = SystemBus()
+            rgb_svc = bus.get("com.yyl.hpmanager.rgb")
+            if isinstance(state, dict):
+                # Restore colors
+                colors = state.get("colors", [])
+                for z, c in enumerate(colors[:8]):
+                    rgb_svc.SetColor(z, c)
+                # Restore mode and speed
+                rgb_svc.SetMode(state.get("mode", "static"), state.get("speed", 50))
+                # Restore global settings
+                rgb_svc.SetGlobal(state.get("power", True), state.get("brightness", 100), state.get("direction", "ltr"))
+            elif isinstance(state, str):
+                # Apply preset overrides
+                if state == "static_red":
+                    rgb_svc.SetColor(8, "FF0000")
+                elif state == "static_green":
+                    rgb_svc.SetColor(8, "00FF00")
+                elif state == "static_blue":
+                    rgb_svc.SetColor(8, "0000FF")
+                elif state == "static_white":
+                    rgb_svc.SetColor(8, "FFFFFF")
+                elif state == "breathing":
+                    rgb_svc.SetMode("breathing", 50)
+                elif state == "cycle":
+                    rgb_svc.SetMode("cycle", 50)
+                elif state == "wave":
+                    rgb_svc.SetMode("wave", 50)
+        except Exception as e:
+            logger.error("Failed to set RGB state via D-Bus: %s", e)
 
     def SetPowerProfile(self, profile):
         if profile not in self._ctrl.get_profiles():
@@ -490,6 +571,9 @@ class PowerService:
                         return "FAIL"
                     theme = val.get("theme", "default")
                     if theme not in ("default", "dark", "light"):
+                        return "FAIL"
+                    rgb = val.get("rgb", "default")
+                    if rgb not in ("default", "static_red", "static_green", "static_blue", "static_white", "breathing", "cycle", "wave"):
                         return "FAIL"
             self._config.set("app_profiles", mapping)
             self._config.save()
