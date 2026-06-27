@@ -110,10 +110,14 @@ class SettingsPage(Gtk.Box):
             ver_badge_border = "rgba(255, 255, 255, 0.1)"
             ver_badge_fg = "rgba(255, 255, 255, 0.8)"
             dev_link_fg = "rgba(255, 255, 255, 0.6)"
+            link_color = "#6db3ff"
             disclaimer_bg = "rgba(255, 255, 255, 0.04)"
             disclaimer_fg = "rgba(255, 255, 255, 0.55)"
             progress_trough_bg = "rgba(255, 255, 255, 0.05)"
             sys_info_val_fg = "rgba(255, 255, 255, 0.6)"
+            sys_info_chip_bg = "rgba(255, 255, 255, 0.05)"
+            sys_info_chip_border = "rgba(255, 255, 255, 0.08)"
+            sys_info_icon_fg = "rgba(168, 85, 247, 0.9)"
             drop_bg = "rgba(255, 255, 255, 0.08)"
             drop_border = "rgba(255, 255, 255, 0.07)"
             drop_hover_bg = "rgba(255, 255, 255, 0.12)"
@@ -132,10 +136,14 @@ class SettingsPage(Gtk.Box):
             ver_badge_border = "rgba(0, 0, 0, 0.1)"
             ver_badge_fg = "rgba(0, 0, 0, 0.8)"
             dev_link_fg = "rgba(0, 0, 0, 0.6)"
+            link_color = "#1a73e8"
             disclaimer_bg = "rgba(0, 0, 0, 0.04)"
             disclaimer_fg = "rgba(0, 0, 0, 0.55)"
             progress_trough_bg = "rgba(0, 0, 0, 0.05)"
             sys_info_val_fg = "rgba(0, 0, 0, 0.6)"
+            sys_info_chip_bg = "rgba(0, 0, 0, 0.04)"
+            sys_info_chip_border = "rgba(0, 0, 0, 0.07)"
+            sys_info_icon_fg = "#7c3aed"
             drop_bg = "rgba(0, 0, 0, 0.05)"
             drop_border = "rgba(0, 0, 0, 0.06)"
             drop_hover_bg = "rgba(0, 0, 0, 0.1)"
@@ -267,12 +275,25 @@ class SettingsPage(Gtk.Box):
             font-size: 11px;
             color: {dev_link_fg};
         }}
-        .about-dev-link a {{
-            color: #0a84ff;
+        .about-dev-link link {{
+            color: {link_color};
             font-weight: 600;
-            text-decoration: none;
         }}
-        .about-dev-link a:hover {{
+        .about-dev-link link:hover {{
+            color: {link_color};
+        }}
+        .dev-link-btn {{
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            padding: 0;
+            min-height: 0;
+            color: {link_color};
+            font-size: 11px;
+            font-weight: 600;
+        }}
+        .dev-link-btn:hover {{
+            background: transparent;
             text-decoration: underline;
         }}
         .about-disclaimer-box {{
@@ -329,6 +350,47 @@ class SettingsPage(Gtk.Box):
         dropdown:hover, dropdown button:hover {{
             background: {drop_hover_bg};
             border-color: {drop_hover_border};
+        }}
+
+        /* ── System Info Chips ── */
+        .sys-info-grid {{
+            margin-top: 4px;
+            margin-bottom: 4px;
+        }}
+        .sys-info-chip {{
+            background: {sys_info_chip_bg};
+            border: 1px solid {sys_info_chip_border};
+            border-radius: 10px;
+            padding: 10px 14px;
+            min-width: 0;
+        }}
+        .sys-info-chip-icon {{
+            font-size: 15px;
+            margin-right: 2px;
+            color: {sys_info_icon_fg};
+        }}
+        .sys-info-chip-key {{
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            color: {sys_info_val_fg};
+            margin-bottom: 2px;
+        }}
+        .sys-info-chip-val {{
+            font-size: 12px;
+            font-weight: 600;
+            color: {fg};
+            font-family: "JetBrains Mono", "Geist Mono", monospace;
+        }}
+        .sys-drivers-header {{
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: {sys_info_val_fg};
+            margin-top: 4px;
+            margin-bottom: 2px;
         }}
         """
         self._css_provider.load_from_data(css.encode())
@@ -534,21 +596,55 @@ class SettingsPage(Gtk.Box):
 
         content.append(self._make_section_header("💻", T("sys_info")))
 
-        # System info rows with emojis
-        sys_info = [
-            ("🖥️",           T("computer"),  platform.node(),       "icon-bg-theme"),
-            ("⚙️",           T("kernel"),    platform.release(),    "icon-bg-mux"),
-            ("🐧",           T("os_name"),   self._get_distro(),    "icon-bg-lang"),
-            ("🔌",           T("arch"),      platform.machine(),    "icon-bg-sys"),
+        # ── 2-column chip grid for system properties ──
+        sys_data = [
+            ("🖥️", T("computer"),  platform.node()),
+            ("🐧", T("os_name"),   self._get_distro()),
+            ("⚙️", T("kernel"),    platform.release()),
+            ("🔌", T("arch"),      platform.machine()),
         ]
-        
-        for idx, (emoji, label, value, bg_class) in enumerate(sys_info):
-            row = self._make_settings_row(emoji, label, Gtk.Box(), sublabel=value, bg_class=bg_class)
-            info_card.append(row)
-            if idx < len(sys_info) - 1:
-                info_card.append(self._make_sep())
 
+        chip_grid = Gtk.Grid(column_spacing=10, row_spacing=10, hexpand=True)
+        chip_grid.add_css_class("sys-info-grid")
+        chip_grid.set_margin_top(6)
+        chip_grid.set_margin_bottom(6)
+        chip_grid.set_margin_start(4)
+        chip_grid.set_margin_end(4)
+
+        for i, (emoji, label, value) in enumerate(sys_data):
+            col = i % 2
+            row = i // 2
+
+            chip = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True, valign=Gtk.Align.CENTER)
+            chip.add_css_class("sys-info-chip")
+
+            # Key row: icon + label
+            key_row = Gtk.Box(spacing=5, valign=Gtk.Align.CENTER)
+            icon_lbl = Gtk.Label(label=emoji)
+            icon_lbl.add_css_class("sys-info-chip-icon")
+            key_row.append(icon_lbl)
+            key_lbl = Gtk.Label(label=label.upper(), xalign=0)
+            key_lbl.add_css_class("sys-info-chip-key")
+            key_row.append(key_lbl)
+            chip.append(key_row)
+
+            # Value
+            val_lbl = Gtk.Label(label=value or "—", xalign=0, halign=Gtk.Align.START)
+            val_lbl.add_css_class("sys-info-chip-val")
+            val_lbl.set_ellipsize(3)  # PANGO_ELLIPSIZE_END
+            chip.append(val_lbl)
+
+            chip_grid.attach(chip, col, row, 1, 1)
+
+        info_card.append(chip_grid)
         info_card.append(self._make_sep())
+
+        # ── Drivers sub-section ──
+        drv_header = Gtk.Label(label=T("driver_status"), xalign=0)
+        drv_header.add_css_class("sys-drivers-header")
+        drv_header.set_margin_start(4)
+        drv_header.set_margin_top(4)
+        info_card.append(drv_header)
 
         # Driver status rows
         hp_rgb_loaded = self._is_module_loaded("hp_rgb_lighting")
@@ -559,7 +655,7 @@ class SettingsPage(Gtk.Box):
 
         info_card.append(self._make_driver_row("💡", "hp-rgb-lighting", hp_rgb_loaded))
         info_card.append(self._make_sep())
-        info_card.append(self._make_driver_row("🌪️", "hp-wmi (Fan/Thermal/Key)", hp_wmi_loaded))
+        info_card.append(self._make_driver_row("🌪️", "hp-wmi  (Fan / Thermal / Key)", hp_wmi_loaded))
 
         content.append(info_card)
 
@@ -678,11 +774,27 @@ class SettingsPage(Gtk.Box):
         name_row.append(ver_badge)
         about_text.append(name_row)
 
-        dev_lbl = Gtk.Label(
-            label=f"{T('developer')}: <a href='https://github.com/CodesRahul96'>CodesRahul96</a> &amp; <a href='https://github.com/yunusemreyl'>yunusemreyl</a>",
-            use_markup=True, xalign=0, halign=Gtk.Align.START)
-        dev_lbl.add_css_class("about-dev-link")
-        about_text.append(dev_lbl)
+        # Developer row with link buttons
+        dev_prefix = Gtk.Label(label=f"{T('developer')}: ", xalign=0, halign=Gtk.Align.START)
+        dev_prefix.add_css_class("about-dev-link")
+        
+        dev_row = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER, halign=Gtk.Align.START)
+        dev_row.append(dev_prefix)
+        
+        btn_rahul = Gtk.LinkButton.new_with_label("https://github.com/CodesRahul96", "CodesRahul96")
+        btn_rahul.add_css_class("dev-link-btn")
+        btn_rahul.set_valign(Gtk.Align.CENTER)
+        dev_row.append(btn_rahul)
+        
+        sep_lbl = Gtk.Label(label=" & ", css_classes=["about-dev-link"])
+        dev_row.append(sep_lbl)
+        
+        btn_yyl = Gtk.LinkButton.new_with_label("https://github.com/yunusemreyl", "yunusemreyl")
+        btn_yyl.add_css_class("dev-link-btn")
+        btn_yyl.set_valign(Gtk.Align.CENTER)
+        dev_row.append(btn_yyl)
+        
+        about_text.append(dev_row)
 
         # Horizontal Box grouping Texts (Left-aligned, flush left)
         profile_row = Gtk.Box(spacing=16, valign=Gtk.Align.CENTER, halign=Gtk.Align.START)
@@ -1150,21 +1262,21 @@ class SettingsPage(Gtk.Box):
 
     def _show_debug_terminal(self, _):
         # Diagnostic Console Window (pure GTK so it works even without libadwaita)
-        win = Gtk.Window(title=T("debug_console_title"), default_width=800, default_height=550, modal=True)
+        win = Gtk.Window(default_width=820, default_height=560, modal=True)
         # Try to make it transient if roots are available
         try:
             root = self.get_root()
             if root: win.set_transient_for(root)
         except: pass
 
-        main_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        win.set_child(main_vbox)
-
-        # Simple Header
+        # Header bar — set as titlebar (replaces the default window title bar entirely)
         header = Gtk.HeaderBar()
         header.set_show_title_buttons(True)
         header.set_title_widget(Gtk.Label(label=T("debug_console_title")))
-        main_vbox.append(header)
+        win.set_titlebar(header)
+
+        main_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        win.set_child(main_vbox)
 
         # Scrolled Terminal
         scrolled = Gtk.ScrolledWindow(vexpand=True)
@@ -1183,6 +1295,7 @@ class SettingsPage(Gtk.Box):
         
         threading.Thread(target=run_diag, daemon=True).start()
         win.present()
+
         
     def _gather_debug_info(self):
         import platform, subprocess, os, glob

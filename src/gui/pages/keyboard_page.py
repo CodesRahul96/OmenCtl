@@ -106,8 +106,13 @@ class KeyboardPage(Gtk.Box):
         fix_card.append(fix_header)
 
         # PrtSc Fix
-        prtsc_box = Gtk.Box(spacing=15)
-        prtsc_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
+        prtsc_box = Gtk.Box(spacing=15, valign=Gtk.Align.CENTER)
+        prtsc_box.add_css_class("settings-row")
+        prtsc_icon = Gtk.Image.new_from_icon_name("input-keyboard-symbolic")
+        prtsc_icon.set_pixel_size(20)
+        prtsc_icon.add_css_class("dim-label")
+        prtsc_box.append(prtsc_icon)
+        prtsc_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True, valign=Gtk.Align.CENTER)
         prtsc_info.append(Gtk.Label(label=T("prt_sc_fix"), xalign=0, css_classes=["title-4"]))
         prtsc_info.append(Gtk.Label(label=T("prt_sc_desc"), xalign=0, css_classes=["dim-label"], wrap=True))
         prtsc_box.append(prtsc_info)
@@ -118,8 +123,13 @@ class KeyboardPage(Gtk.Box):
         fix_card.append(Gtk.Separator())
 
         # F1 Fix
-        f1_box = Gtk.Box(spacing=15)
-        f1_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
+        f1_box = Gtk.Box(spacing=15, valign=Gtk.Align.CENTER)
+        f1_box.add_css_class("settings-row")
+        f1_icon = Gtk.Image.new_from_icon_name("preferences-desktop-keyboard-symbolic")
+        f1_icon.set_pixel_size(20)
+        f1_icon.add_css_class("dim-label")
+        f1_box.append(f1_icon)
+        f1_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True, valign=Gtk.Align.CENTER)
         f1_info.append(Gtk.Label(label=T("f1_fix"), xalign=0, css_classes=["title-4"]))
         f1_info.append(Gtk.Label(label=T("f1_desc"), xalign=0, css_classes=["dim-label"], wrap=True))
         f1_box.append(f1_info)
@@ -130,8 +140,11 @@ class KeyboardPage(Gtk.Box):
         root.append(fix_card)
 
         # Footer Action
-        footer = Gtk.Box(spacing=12, halign=Gtk.Align.END)
+        footer = Gtk.Box(spacing=12, halign=Gtk.Align.END, valign=Gtk.Align.CENTER)
         self._footer_box = footer
+        self._apply_feedback_lbl = Gtk.Label(label="", css_classes=["dim-label"])
+        self._apply_feedback_lbl.set_opacity(0)
+        footer.append(self._apply_feedback_lbl)
         self.apply_btn = Gtk.Button(label=T("apply_shortcuts"))
         self.apply_btn.add_css_class("suggested-action")
         self.apply_btn.connect("clicked", self._on_apply)
@@ -210,16 +223,11 @@ class KeyboardPage(Gtk.Box):
         
         try:
             self.service.SetKeyboardFixes(p, f)
-            
-            # Show success toast or info
-            toast = Gtk.MessageDialog(
-                transient_for=self.get_root(),
-                message_type=Gtk.MessageType.INFO,
-                buttons=Gtk.ButtonsType.OK,
-                text=T("hwdb_applied")
-            )
-            toast.connect("response", lambda r, id: r.destroy())
-            toast.present()
+            feedback = getattr(self, "_apply_feedback_lbl", None)
+            if feedback:
+                feedback.set_label(T("hwdb_applied"))
+                feedback.set_opacity(0.75)
+                GLib.timeout_add(3000, lambda: (feedback.set_opacity(0), feedback.set_label(""), False))
         except Exception as e:
             print(f"Apply shortcuts failed: {e}")
 

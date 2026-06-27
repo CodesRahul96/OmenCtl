@@ -561,23 +561,33 @@ class PowerService:
             mapping = json.loads(json_str)
             if not isinstance(mapping, dict):
                 return "FAIL"
+
+            # Always have a valid set to check against — fall back to known names
+            # if the power backend is unavailable (e.g. hp-wmi not installed).
+            _raw_profiles = self._ctrl.get_profiles()
+            valid_profiles = set(_raw_profiles) if _raw_profiles else {"power-saver", "balanced", "performance"}
+            valid_fan   = {"default", "auto", "max"}
+            valid_theme = {"default", "dark", "light"}
+            valid_rgb   = {"default", "static_red", "static_green", "static_blue",
+                           "static_white", "breathing", "cycle", "wave"}
+
+            cleaned = {}
             for app, val in mapping.items():
                 profile_name = val.get("profile") if isinstance(val, dict) else val
-                if profile_name not in self._ctrl.get_profiles():
-                    return "FAIL"
+                if profile_name not in valid_profiles:
+                    logger.warning("SetAppProfiles: skipping '%s' — unknown profile '%s'", app, profile_name)
+                    continue
                 if isinstance(val, dict):
-                    fan_mode = val.get("fan_mode", "default")
-                    if fan_mode not in ("default", "auto", "max"):
-                        return "FAIL"
-                    theme = val.get("theme", "default")
-                    if theme not in ("default", "dark", "light"):
-                        return "FAIL"
-                    rgb = val.get("rgb", "default")
-                    if rgb not in ("default", "static_red", "static_green", "static_blue", "static_white", "breathing", "cycle", "wave"):
-                        return "FAIL"
-            self._config.set("app_profiles", mapping)
+                    if val.get("fan_mode", "default") not in valid_fan or \
+                       val.get("theme", "default") not in valid_theme or \
+                       val.get("rgb", "default") not in valid_rgb:
+                        logger.warning("SetAppProfiles: skipping '%s' — invalid field value", app)
+                        continue
+                cleaned[app] = val
+
+            self._config.set("app_profiles", cleaned)
             self._config.save()
-            logger.info("App Profiles Updated: %s", mapping)
+            logger.info("App Profiles Updated: %s", cleaned)
             return "OK"
         except Exception as e:
             logger.error("Failed to parse app profiles: %s", e)

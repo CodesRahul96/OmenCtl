@@ -61,7 +61,7 @@ class AppProfilesPage(Gtk.Box):
         self.append(scroll)
         self._root_box = root
 
-        # ── Header with Logo ──
+        # ── Header with Logo + Toggle ──
         header = Gtk.Box(spacing=15, valign=Gtk.Align.CENTER)
         self._header_box = header
         if os.path.exists(self.logo_path):
@@ -70,36 +70,33 @@ class AppProfilesPage(Gtk.Box):
             img.set_pixel_size(48)
             header.append(img)
         
-        title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
         title = Gtk.Label(label=T("app_profiles"), xalign=0, css_classes=["title-1"])
         title_box.append(title)
         desc = Gtk.Label(label=T("app_profiles_desc"), xalign=0, css_classes=["dim-label"])
         title_box.append(desc)
         header.append(title_box)
-        root.append(header)
-
-        root.append(Gtk.Separator())
-
-        # ── Toggle Switch Card ──
-        toggle_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
-        toggle_card.add_css_class("card")
-        self._toggle_card = toggle_card
         
-        lbl_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
-        lbl_box.append(Gtk.Label(label=T("app_profiles"), xalign=0, css_classes=["title-4"]))
-        lbl_box.append(Gtk.Label(label=T("app_profiles_desc"), xalign=0, css_classes=["dim-label"], wrap=True))
-        toggle_card.append(lbl_box)
-        
+        # Toggle switch inline with header (no separate card needed)
         self.app_profiles_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
         self.app_profiles_switch.connect("state-set", self._on_app_profiles_toggle)
-        toggle_card.append(self.app_profiles_switch)
-        root.append(toggle_card)
+        header.append(self.app_profiles_switch)
+        root.append(header)
 
         # ── Add Mapping Form Card ──
         add_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
         add_card.add_css_class("card")
         self._add_card = add_card
-        add_card.append(Gtk.Label(label=T("add"), xalign=0, css_classes=["heading"]))
+        
+        add_header_row = Gtk.Box(spacing=10, valign=Gtk.Align.CENTER)
+        add_icon = Gtk.Image.new_from_icon_name("list-add-symbolic")
+        add_icon.set_pixel_size(16)
+        add_icon.add_css_class("dim-label")
+        add_header_row.append(add_icon)
+        add_header_lbl = Gtk.Label(label=T("add_profile_heading"), xalign=0, css_classes=["heading"])
+        add_header_row.append(add_header_lbl)
+        add_card.append(add_header_row)
+        add_card.append(Gtk.Separator())
 
         form_grid = Gtk.Grid(column_spacing=24, row_spacing=18, hexpand=True, column_homogeneous=True)
         
@@ -168,9 +165,18 @@ class AppProfilesPage(Gtk.Box):
         root.append(add_card)
 
         # ── Configuration Mappings List Card ──
-        self.list_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
+        self.list_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self.list_card.add_css_class("card")
-        self.list_card.append(Gtk.Label(label=T("app_profiles"), xalign=0, css_classes=["heading"]))
+        
+        list_header_row = Gtk.Box(spacing=10, valign=Gtk.Align.CENTER)
+        list_icon = Gtk.Image.new_from_icon_name("view-list-symbolic")
+        list_icon.set_pixel_size(16)
+        list_icon.add_css_class("dim-label")
+        list_header_row.append(list_icon)
+        list_header_lbl = Gtk.Label(label=T("configured_profiles_heading"), xalign=0, hexpand=True, css_classes=["heading"])
+        list_header_row.append(list_header_lbl)
+        self.list_card.append(list_header_row)
+        self.list_card.append(Gtk.Separator())
         
         self.app_profiles_list_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.list_card.append(self.app_profiles_list_box)
@@ -341,44 +347,69 @@ class AppProfilesPage(Gtk.Box):
                         profile = val
                         category = "game"
                         display_name = app_name
-                        
+
                     if idx > 0:
-                        self.app_profiles_list_box.append(Gtk.Separator(margin_top=8, margin_bottom=8))
-                        
+                        self.app_profiles_list_box.append(Gtk.Separator())
+
                     row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, valign=Gtk.Align.CENTER)
-                    row.set_margin_top(4)
-                    row.set_margin_bottom(4)
-                    
-                    icon = "🎮"
-                    if category == "program":
-                        icon = "💻"
-                    elif category == "other":
-                        icon = "⚙️"
-                        
+                    row.set_margin_top(10)
+                    row.set_margin_bottom(10)
+
+                    # Icon by category
+                    cat_icon_name = (
+                        "applications-games-symbolic" if category == "game"
+                        else "utilities-terminal-symbolic" if category == "program"
+                        else "applications-other-symbolic"
+                    )
+                    cat_img = Gtk.Image.new_from_icon_name(cat_icon_name)
+                    cat_img.set_pixel_size(20)
+                    cat_img.set_valign(Gtk.Align.CENTER)
+                    cat_img.add_css_class("dim-label")
+                    row.append(cat_img)
+
+                    # Text column
+                    text_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True, valign=Gtk.Align.CENTER)
+
                     active_app = data.get("active_app")
                     is_active = active_app and (active_app.lower() == app_name.lower())
-                    
-                    lbl_text = f"{icon}  {display_name}"
+
+                    name_row = Gtk.Box(spacing=8, valign=Gtk.Align.CENTER)
+                    lbl = Gtk.Label(xalign=0, css_classes=["title-4"])
                     if is_active:
-                        lbl_text += f" <span foreground='#57c494' size='small' weight='bold'>[{T('active')}]</span>"
-                        
-                    lbl = Gtk.Label(xalign=0, hexpand=True, halign=Gtk.Align.START, css_classes=["title-4"])
-                    lbl.set_markup(lbl_text)
-                    
-                    # Extract fan mode, theme and RGB mode
+                        lbl.set_markup(f"{display_name} <span foreground='#57c494' size='small' weight='bold'>[{T('active')}]</span>")
+                    else:
+                        lbl.set_text(display_name)
+                    name_row.append(lbl)
+
+                    # Exec name pill
+                    exec_lbl = Gtk.Label(label=f"  {app_name}  ", css_classes=["dim-label"])
+                    exec_lbl.set_opacity(0.5)
+                    name_row.append(exec_lbl)
+                    text_col.append(name_row)
+
+                    # Badges row
+                    badges_row = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
                     fan_mode = val.get("fan_mode", "default") if isinstance(val, dict) else "default"
                     theme = val.get("theme", "default") if isinstance(val, dict) else "default"
                     rgb = val.get("rgb", "default") if isinstance(val, dict) else "default"
-                    
+
+                    # Profile badge
                     p_text = T("saver") if profile == "power-saver" else T("balanced") if profile == "balanced" else T("performance")
-                    meta_parts = [p_text]
+                    p_pill = Gtk.Label(label=f" {p_text} ", css_classes=["game-source"])
+                    badges_row.append(p_pill)
+
                     if fan_mode and fan_mode != "default":
-                        fan_lbl_text = T("fan_auto") if fan_mode == "auto" else T("fan_max")
-                        meta_parts.append(fan_lbl_text)
+                        fan_text = T("fan_auto") if fan_mode == "auto" else T("fan_max")
+                        fan_pill = Gtk.Label(label=f" 🌀 {fan_text} ", css_classes=["game-source"])
+                        badges_row.append(fan_pill)
+
                     if theme == "dark":
-                        meta_parts.append("\U0001f319")  # 🌙
+                        theme_pill = Gtk.Label(label=" 🌙 Dark ", css_classes=["game-source"])
+                        badges_row.append(theme_pill)
                     elif theme == "light":
-                        meta_parts.append("\u2600\ufe0f")   # ☀️
+                        theme_pill = Gtk.Label(label=" ☀️ Light ", css_classes=["game-source"])
+                        badges_row.append(theme_pill)
+
                     if rgb and rgb != "default":
                         rgb_text = T("rgb_static_red") if rgb == "static_red" else \
                                    T("rgb_static_green") if rgb == "static_green" else \
@@ -387,21 +418,22 @@ class AppProfilesPage(Gtk.Box):
                                    T("rgb_breathing") if rgb == "breathing" else \
                                    T("rgb_cycle") if rgb == "cycle" else \
                                    T("rgb_wave")
-                        meta_parts.append(f"💡 {rgb_text}")
-                    lbl_settings = " • ".join(meta_parts)
-                        
-                    profile_lbl = Gtk.Label(label=lbl_settings, xalign=0, halign=Gtk.Align.END, css_classes=["dim-label"])
-                    
-                    del_btn = Gtk.Button(label="🗑️")
-                    del_btn.add_css_class("update-btn")
+                        rgb_pill = Gtk.Label(label=f" 💡 {rgb_text} ", css_classes=["game-source"])
+                        badges_row.append(rgb_pill)
+
+                    text_col.append(badges_row)
+                    row.append(text_col)
+
+                    # Delete button
+                    del_btn = Gtk.Button()
+                    del_btn.set_icon_name("user-trash-symbolic")
+                    del_btn.add_css_class("destructive-action")
+                    del_btn.add_css_class("flat")
                     del_btn.set_valign(Gtk.Align.CENTER)
                     del_btn.set_tooltip_text(T("delete"))
                     del_btn.connect("clicked", lambda *_, a=app_name: self._delete_app_profile(a))
-                    
-                    row.append(lbl)
-                    row.append(profile_lbl)
                     row.append(del_btn)
-                    
+
                     self.app_profiles_list_box.append(row)
                 
         except Exception as e:
@@ -487,12 +519,67 @@ class AppProfilesPage(Gtk.Box):
             raw = self.power_service.GetPowerProfile()
             data = json.loads(raw)
             app_profiles = data.get("app_profiles", {})
-            if app_name in app_profiles:
-                del app_profiles[app_name]
-                self.power_service.SetAppProfiles(json.dumps(app_profiles))
+            if app_name not in app_profiles:
+                return
+
+            del app_profiles[app_name]
+            result = self.power_service.SetAppProfiles(json.dumps(app_profiles))
+
+            if result == "OK":
                 self._refresh_app_profiles()
+            else:
+                # Daemon returned FAIL — likely a stale/invalid entry in the map.
+                # Fall back: write directly to the config file.
+                self._delete_profile_from_config_file(app_name)
+
         except Exception as e:
             print(f"Failed to delete app profile: {e}")
+            self._delete_profile_from_config_file(app_name)
+
+    def _delete_profile_from_config_file(self, app_name):
+        """Fallback: directly edit the JSON config file and reload the daemon state."""
+        import subprocess, json as _json
+        config_path = "/etc/hp-manager/power_profile.json"
+        try:
+            with open(config_path, "r") as f:
+                cfg = _json.load(f)
+            profiles = cfg.get("app_profiles", {})
+            if app_name in profiles:
+                del profiles[app_name]
+                cfg["app_profiles"] = profiles
+                import tempfile, os
+                with tempfile.NamedTemporaryFile("w", dir="/etc/hp-manager",
+                                                 suffix=".tmp", delete=False) as tf:
+                    _json.dump(cfg, tf, indent=2)
+                    tmp_path = tf.name
+                os.replace(tmp_path, config_path)
+                # Ask daemon to reload
+                try:
+                    subprocess.run(["systemctl", "restart", "hpm-power"],
+                                   timeout=5, capture_output=True)
+                except Exception:
+                    pass
+                # Refresh UI after brief pause for daemon to come up
+                from gi.repository import GLib
+                GLib.timeout_add(800, self._refresh_app_profiles)
+        except PermissionError:
+            # Need root — show error in header
+            GLib.idle_add(self._show_delete_error)
+        except Exception as e:
+            print(f"Config fallback delete failed: {e}")
+
+    def _show_delete_error(self):
+        """Show a brief error notice in the list card header."""
+        hdr = getattr(self, "list_card", None)
+        if hdr:
+            err = Gtk.Label(label="⚠ Delete failed — restart OmenCtl as root",
+                            css_classes=["dim-label"])
+            err.set_opacity(0.8)
+            hdr.append(err)
+            from gi.repository import GLib
+            GLib.timeout_add(4000, lambda: (hdr.remove(err), False))
+        return False
+
 
     def refresh(self):
         self._refresh_app_profiles()
@@ -522,8 +609,7 @@ class AppProfilesPage(Gtk.Box):
         if hasattr(self, "_header_box") and self._header_box is not None:
             self._header_box.set_spacing(10 if bucket == "compact" else 18 if bucket == "spacious" else 15)
 
-        if hasattr(self, "_toggle_card") and self._toggle_card is not None:
-            self._toggle_card.set_spacing(10 if bucket == "compact" else 18 if bucket == "spacious" else 15)
+
 
         if hasattr(self, "_add_card") and self._add_card is not None:
             self._add_card.set_spacing(10 if bucket == "compact" else 18 if bucket == "spacious" else 15)
