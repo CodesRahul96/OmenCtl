@@ -121,18 +121,23 @@ class OmenHighTechGauge(Gtk.DrawingArea):
             cr.arc(cx, cy, r_main + 16, start_angle, end_angle)
             cr.stroke()
             
+            # Dynamic color coding based on temp threshold
+            if self.temp >= 80.0:
+                arc_color = (0.94, 0.23, 0.23) # Red / Hot
+            elif self.temp >= 68.0:
+                arc_color = (0.96, 0.62, 0.15) # Amber / Warm
+            else:
+                arc_color = self.active_color
+
             # Fill track
-            cr.set_source_rgba(*self.active_color, 0.85)
+            cr.set_source_rgba(*arc_color, 0.85)
             cr.arc(cx, cy, r_main + 16, start_angle, fill_angle)
             cr.stroke()
             
             # Label temperature e.g. "51°C" bold, italic, and exactly ON TOP of the curve
             cr.select_font_face("Sans", cairo.FONT_SLANT_ITALIC, cairo.FONT_WEIGHT_BOLD)
             cr.set_font_size(18)
-            if self.is_dark:
-                cr.set_source_rgba(0.9, 0.94, 1.0, 0.95)
-            else:
-                cr.set_source_rgba(0.1, 0.11, 0.15, 0.95)
+            cr.set_source_rgba(*arc_color, 0.95)
             cr.move_to(cx - 100, cy - 76) # Slightly larger label for clearer visibility
             cr.show_text(f"{int(self.temp)}°C")
         else:
@@ -150,18 +155,23 @@ class OmenHighTechGauge(Gtk.DrawingArea):
             cr.arc(cx, cy, r_main + 16, start_angle, end_angle)
             cr.stroke()
             
+            # Dynamic color coding based on temp threshold
+            if self.temp >= 80.0:
+                arc_color = (0.94, 0.23, 0.23) # Red / Hot
+            elif self.temp >= 68.0:
+                arc_color = (0.96, 0.62, 0.15) # Amber / Warm
+            else:
+                arc_color = self.active_color
+
             # Fill track
-            cr.set_source_rgba(*self.active_color, 0.85)
+            cr.set_source_rgba(*arc_color, 0.85)
             cr.arc(cx, cy, r_main + 16, start_angle, fill_angle)
             cr.stroke()
             
             # Label temperature e.g. "0°C" bold, italic, and exactly ON TOP of the curve
             cr.select_font_face("Sans", cairo.FONT_SLANT_ITALIC, cairo.FONT_WEIGHT_BOLD)
             cr.set_font_size(18)
-            if self.is_dark:
-                cr.set_source_rgba(0.9, 0.94, 1.0, 0.95)
-            else:
-                cr.set_source_rgba(0.1, 0.11, 0.15, 0.95)
+            cr.set_source_rgba(*arc_color, 0.95)
             cr.move_to(cx + 62, cy - 76) # Slightly larger label for clearer visibility
             cr.show_text(f"{int(self.temp)}°C")
 
@@ -754,6 +764,9 @@ class FanPage(Gtk.Box):
             act_btn_color = "#ffffff"
             act_btn_hover_bg = "rgba(255, 255, 255, 0.08)"
             sensor_row_border = "rgba(255, 255, 255, 0.02)"
+            chip_bg = "rgba(255, 255, 255, 0.03)"
+            chip_border = "rgba(255, 255, 255, 0.07)"
+            chip_title_color = "#8890a0"
         else:
             capsule_bg = "rgba(255, 255, 255, 0.85)"
             capsule_border = "rgba(168, 85, 247, 0.25)"
@@ -778,6 +791,9 @@ class FanPage(Gtk.Box):
             act_btn_color = "#0f172a"
             act_btn_hover_bg = "rgba(0, 0, 0, 0.08)"
             sensor_row_border = "rgba(0, 0, 0, 0.04)"
+            chip_bg = "rgba(0, 0, 0, 0.025)"
+            chip_border = "rgba(0, 0, 0, 0.07)"
+            chip_title_color = "#64748b"
 
         css_data = f"""
         .mode-selector-capsule {{
@@ -897,9 +913,29 @@ class FanPage(Gtk.Box):
             border-color: rgba(168, 85, 247, 0.5);
             box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
         }}
-        .sensor-row {{
-            padding: 4px 6px;
-            border-bottom: 1px solid {sensor_row_border};
+        .sensor-chip {{
+            background-color: {chip_bg};
+            border: 1px solid {chip_border};
+            border-radius: 12px;
+            padding: 8px 12px;
+            transition: all 150ms ease;
+        }}
+        .sensor-chip-title {{
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: {chip_title_color};
+        }}
+        .sensor-chip-val {{
+            font-size: 16px;
+            font-weight: 800;
+        }}
+        .alert-banner {{
+            background-color: rgba(239, 91, 74, 0.12);
+            border: 1px solid rgba(239, 91, 74, 0.3);
+            border-radius: 12px;
+            padding: 8px 16px;
         }}
         """
         self._css_provider.load_from_data(css_data.encode())
@@ -1282,10 +1318,11 @@ class FanPage(Gtk.Box):
         self.sensor_card.append(lbl_s)
         self.sensor_card.append(Gtk.Separator())
 
-        # Scrollable sensor list
+        # Scrollable sensor list (2-column chip grid)
         sensor_scroll = Gtk.ScrolledWindow(height_request=150, vexpand=True)
         sensor_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        self.sensor_list_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.sensor_list_box = Gtk.Grid(column_spacing=10, row_spacing=10, hexpand=True)
+        self.sensor_list_box.set_column_homogeneous(True)
         sensor_scroll.set_child(self.sensor_list_box)
         self.sensor_card.append(sensor_scroll)
         
@@ -2058,13 +2095,13 @@ class FanPage(Gtk.Box):
         return True
 
     def _update_sensor_list(self, sensors):
-        """Populate the left bottom card with a beautifully formatted list of real-time temperatures."""
+        """Populate the left bottom card with a beautifully formatted chip grid of real-time temperatures."""
         if len(sensors) != len(self._sensor_labels):
             while child := self.sensor_list_box.get_first_child():
                 self.sensor_list_box.remove(child)
             self._sensor_labels.clear()
 
-        for s in sensors:
+        for idx, s in enumerate(sensors):
             key = f"{s['driver']}_{s['label']}"
             val_str = f"{int(s['temp'])}°C"
 
@@ -2091,31 +2128,26 @@ class FanPage(Gtk.Box):
                 _lbl_name, lbl_temp = self._sensor_labels[key]
                 lbl_temp.set_markup(f"<span color='{color}'><b>{val_str}</b></span>")
             else:
-                row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-                row.add_css_class("sensor-row")
-                
-                bullet = Gtk.Label(label="• ")
-                bullet.set_opacity(0.4)
-                row.append(bullet)
+                chip = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
+                chip.add_css_class("sensor-chip")
 
-                lbl_name = Gtk.Label(label=s["label"], xalign=0, css_classes=["dim-label"])
-                lbl_name.set_hexpand(True)
-                row.append(lbl_name)
+                lbl_name = Gtk.Label(label=s["label"], xalign=0, css_classes=["sensor-chip-title"])
+                chip.append(lbl_name)
 
-                lbl_temp = Gtk.Label(xalign=1)
-                lbl_temp.add_css_class("sensor-temp-val")
+                lbl_temp = Gtk.Label(xalign=0, css_classes=["sensor-chip-val"])
                 lbl_temp.set_markup(f"<span color='{color}'><b>{val_str}</b></span>")
-                row.append(lbl_temp)
+                chip.append(lbl_temp)
 
-                self._sensor_list_box_row = row
-                self.sensor_list_box.append(row)
+                col = idx % 2
+                row = idx // 2
+                self.sensor_list_box.attach(chip, col, row, 1, 1)
                 self._sensor_labels[key] = (lbl_name, lbl_temp)
 
         if not sensors:
             if not self.sensor_list_box.get_first_child():
                 lbl_empty = Gtk.Label(label=T("no_sensor"), css_classes=["dim-label"])
                 lbl_empty.set_opacity(0.6)
-                self.sensor_list_box.append(lbl_empty)
+                self.sensor_list_box.attach(lbl_empty, 0, 0, 2, 1)
 
     def cleanup(self):
         self._stop_timers()
