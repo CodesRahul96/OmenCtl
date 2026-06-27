@@ -40,6 +40,14 @@
 </p>
 
 <p align="center">
+  <b>📱 Application Profiles</b>
+</p>
+<p align="center">
+  <img src="screenshots/app_profile_dark.png" alt="Application Profiles Dark" width="48%">
+  <img src="screenshots/app_profile_light.png" alt="Application Profiles Light" width="48%">
+</p>
+
+<p align="center">
   <b>⚙️ Settings & Custom Themes</b>
 </p>
 <p align="center">
