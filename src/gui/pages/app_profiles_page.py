@@ -3,7 +3,7 @@
 import os, json
 import gi
 gi.require_version('Gtk', '4.0')
-from gi.repository import Gtk, GLib, Gdk
+from gi.repository import Gtk, GLib
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -64,24 +64,31 @@ class AppProfilesPage(Gtk.Box):
         # ── Header with Logo + Toggle ──
         header = Gtk.Box(spacing=15, valign=Gtk.Align.CENTER)
         self._header_box = header
+
+        # Logo — use new_from_file for best quality scaling
+        logo_img = Gtk.Image()
+        logo_img.set_valign(Gtk.Align.CENTER)
         if os.path.exists(self.logo_path):
-            texture = Gdk.Texture.new_from_filename(self.logo_path)
-            img = Gtk.Image.new_from_paintable(texture)
-            img.set_pixel_size(48)
-            header.append(img)
-        
+            logo_img.set_from_file(self.logo_path)
+            logo_img.set_pixel_size(48)
+        else:
+            logo_img.set_from_icon_name("computer-symbolic")
+            logo_img.set_pixel_size(40)
+        header.append(logo_img)
+
         title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
         title = Gtk.Label(label=T("app_profiles"), xalign=0, css_classes=["title-1"])
         title_box.append(title)
         desc = Gtk.Label(label=T("app_profiles_desc"), xalign=0, css_classes=["dim-label"])
         title_box.append(desc)
         header.append(title_box)
-        
+
         # Toggle switch inline with header (no separate card needed)
         self.app_profiles_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
         self.app_profiles_switch.connect("state-set", self._on_app_profiles_toggle)
         header.append(self.app_profiles_switch)
         root.append(header)
+
 
         # ── Add Mapping Form Card ──
         add_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
