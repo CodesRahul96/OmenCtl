@@ -19,8 +19,8 @@ def T(k):
     return _T(k)
 
 
-APP_VERSION = "1.5.3"
-GITHUB_REPO = "yunusemreyl/OmenCtl"
+APP_VERSION = "1.6.0-preview"
+GITHUB_REPO = "CodesRahul96/OmenCtl"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 
@@ -578,11 +578,17 @@ class SettingsPage(Gtk.Box):
         update_card.append(self.update_progress)
 
         # Restart button
-        self.restart_btn = Gtk.Button(label=T("restart_app"))
+        self.restart_btn = Gtk.Button()
+        restart_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        restart_icon = Gtk.Image.new_from_icon_name("view-refresh-symbolic")
+        restart_icon.set_pixel_size(16)
+        restart_box.append(restart_icon)
+        restart_box.append(Gtk.Label(label=T("restart_app")))
+        self.restart_btn.set_child(restart_box)
         self.restart_btn.add_css_class("suggested-action")
         self.restart_btn.set_visible(False)
         self.restart_btn.connect("clicked", self._restart_app)
-        update_card.append(self.restart_btn)
+        update_row.append(self.restart_btn)
 
         content.append(update_card)
 

@@ -716,6 +716,7 @@ class FanPage(Gtk.Box):
         self.fan_control_level = 1
         self.fan_control_mode = "performance"
         self.fan_curve_editor_open = False
+        self._fan_mode_synced = False
 
         self._css_provider = Gtk.CssProvider()
         Gtk.StyleContext.add_provider_for_display(
@@ -1913,6 +1914,24 @@ class FanPage(Gtk.Box):
         self.ram_bridge.set_val(ram_pct, ram_text)
         self.disk_bridge.set_val(disk_pct, disk_text)
         self.bat_bridge.set_val(bat_pct, bat_text)
+
+        # On first refresh, sync fan control mode from daemon's actual state
+        if not getattr(self, "_fan_mode_synced", False) and fan_info:
+            self._fan_mode_synced = True
+            daemon_mode = fan_info.get("mode", "auto")
+            supports_custom = fan_info.get("supports_custom", True)
+            if not supports_custom and getattr(self, "fan_control_custom_btn", None) is not None:
+                self.fan_control_custom_btn.set_visible(False)
+            
+            if daemon_mode == "auto":
+                self.fan_control_mode = "auto"
+                self.fan_control_level = 0
+            elif daemon_mode == "max":
+                self.fan_control_mode = "max"
+                self.fan_control_level = 2
+            elif daemon_mode == "custom":
+                self.fan_control_mode = "custom"
+                self.fan_control_level = 3
 
         # Sync fan control mode and level with daemon if it was overridden by app profile/daemon
         daemon_mode = fan_info.get("mode", "auto")

@@ -54,8 +54,9 @@ from pages.mux_page import MUXPage
 from pages.settings_page import SettingsPage
 from pages.keyboard_page import KeyboardPage
 from pages.app_profiles_page import AppProfilesPage
+from pages.power_page import PowerPage
 
-APP_VERSION = "1.5.3"
+APP_VERSION = "1.6.0-preview"
 CONFIG_FILE      = os.path.expanduser("~/.config/hp-manager.toml")
 CONFIG_FILE_JSON = os.path.expanduser("~/.config/hp-manager.json")
 _LAUNCHER_REFRESH_MS = 5000
@@ -176,22 +177,39 @@ class FixedMenuIcon(Gtk.DrawingArea):
             return
 
         if kind == "lighting":
-            cx, cy = w / 2, h / 2
-            r = min(w, h) * 0.22
-            cr.arc(cx, cy - r * 0.25, r, 0, 2 * 3.14159)
+            # Draw a keyboard outline at the bottom
+            x = w * 0.18
+            y = h * 0.45
+            ww = w * 0.64
+            hh = h * 0.35
+            cr.rectangle(x, y, ww, hh)
             cr.stroke()
-            cr.move_to(cx - r * 0.55, cy + r * 0.9)
-            cr.line_to(cx + r * 0.55, cy + r * 0.9)
+            # Draw spacebar
+            cr.rectangle(x + ww * 0.25, y + hh * 0.68, ww * 0.5, hh * 0.18)
             cr.stroke()
-            cr.move_to(cx - r * 0.34, cy + r * 0.52)
-            cr.line_to(cx + r * 0.34, cy + r * 0.52)
-            cr.stroke()
-            cr.move_to(cx - r * 0.34, cy + r * 0.52)
-            cr.line_to(cx - r * 0.34, cy + r * 0.9)
-            cr.stroke()
-            cr.move_to(cx + r * 0.34, cy + r * 0.52)
-            cr.line_to(cx + r * 0.34, cy + r * 0.9)
-            cr.stroke()
+            # Some key lines
+            key_w = ww / 5.0
+            key_h = hh / 3.0
+            for r in range(2):
+                for c in range(4):
+                    kx = x + key_w * 0.5 + c * key_w
+                    ky = y + key_h * 0.4 + r * key_h
+                    cr.rectangle(kx, ky, key_w * 0.6, key_h * 0.4)
+                    cr.stroke()
+            
+            # Draw rays of light pointing upwards/outwards from the keyboard
+            cx = w / 2
+            cy = y - h * 0.05
+            r1 = h * 0.1
+            r2 = h * 0.28
+            for angle in (-1.57, -1.05, -2.09, -0.52, -2.62):
+                x1 = cx + r1 * math.cos(angle)
+                y1 = cy + r1 * math.sin(angle)
+                x2 = cx + r2 * math.cos(angle)
+                y2 = cy + r2 * math.sin(angle)
+                cr.move_to(x1, y1)
+                cr.line_to(x2, y2)
+                cr.stroke()
             return
 
         if kind == "keyboard":
@@ -317,6 +335,7 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
             "dashboard": T("dashboard"),
             "fan": T("fan"),
             "lighting": T("lighting"),
+            "power": T("power_tuning"),
             "app_profiles": T("app_profiles"),
             "keyboard": T("keyboard"),
             "mux": "MUX",
@@ -2121,8 +2140,10 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
 
         nav_items = [
             ("fan",          self.page_titles["fan"],          "weather-tornado-symbolic"),
-            ("lighting",     self.page_titles["lighting"],     "input-keyboard-symbolic"),
-            ("app_profiles", self.page_titles["app_profiles"], "application-x-executable-symbolic"),
+            ("lighting",     self.page_titles["lighting"],     "keyboard-brightness-symbolic"),
+            ("power",        self.page_titles["power"],        "weather-clear-symbolic"),
+            ("keyboard",     self.page_titles["keyboard"],     "input-keyboard-symbolic"),
+            ("app_profiles", self.page_titles["app_profiles"], "preferences-system-symbolic"),
             ("mux",          "MUX",                            "video-display-symbolic"),
         ]
 
@@ -2313,6 +2334,7 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
         # Pages
         self.fan_page        = FanPage(service=None, on_profile_change=self._on_profile_mode_changed)
         self.lighting_page   = LightingPage(service=None)
+        self.power_page      = PowerPage(service=None)
         self.keyboard_page   = KeyboardPage(service=None)
         self.app_profiles_page = AppProfilesPage(service=None)
         self.mux_page        = MUXPage(service=None)
@@ -2326,6 +2348,7 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
         self.stack.add_named(self.home_page, "home")
         self.stack.add_named(self.fan_page,        "fan")
         self.stack.add_named(self.lighting_page,   "lighting")
+        self.stack.add_named(self.power_page,      "power")
         self.stack.add_named(self.app_profiles_page, "app_profiles")
         self.stack.add_named(self.keyboard_page,   "keyboard")
         self.stack.add_named(self.mux_page,        "mux")
@@ -2443,7 +2466,9 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
             "dashboard": "Sistem özeti ve canlı sensörler",
             "fan": "Fan, güç ve termal profiller",
             "lighting": "Aydınlatma efektleri ve parlaklık",
+            "power": "Gelişmiş voltaj ve termal limit ayarları",
             "keyboard": "Özel tuşlar ve kısayollar",
+            "app_profiles": "Oyun ve uygulamalara özel güç modları",
             "mux": "GPU geçiş modu ve sürücü",
             "settings": "Tema, dil ve uygulama ayarları",
         }
@@ -2451,17 +2476,37 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
             "dashboard": "System overview and live sensors",
             "fan": "Fan, power and thermal profiles",
             "lighting": "Lighting effects and brightness",
+            "power": "Advanced undervolt and thermal limit settings",
             "keyboard": "Special keys and shortcuts",
+            "app_profiles": "Per-app power and fan profiles",
             "mux": "GPU switching mode and driver",
             "settings": "Theme, language and app settings",
         }
-        desc = labels_tr if str(get_lang() or "").lower().startswith("tr") else labels_en
+        labels_hi = {
+            "dashboard": "सिस्टम अवलोकन और लाइव सेंसर",
+            "fan": "फैन, पावर और थर्मल प्रोफाइल",
+            "lighting": "लाइटिंग प्रभाव और चमक",
+            "power": "उन्नत अंडरवोल्ट और थर्मल सीमा सेटिंग्स",
+            "keyboard": "विशेष कुंजी और शॉर्टकट",
+            "app_profiles": "प्रति-ऐप पावर और फैन प्रोफाइल",
+            "mux": "GPU स्विचिंग मोड और ड्राइवर",
+            "settings": "थीम, भाषा और ऐप सेटिंग्स",
+        }
+        lang = str(get_lang() or "").lower()
+        if lang.startswith("tr"):
+            desc = labels_tr
+        elif lang.startswith("hi"):
+            desc = labels_hi
+        else:
+            desc = labels_en
 
         cards = [
             ("dashboard", self.page_titles["dashboard"], "dashboard"),
             ("fan", self.page_titles["fan"], "fan"),
             ("lighting", self.page_titles["lighting"], "lighting"),
+            ("power", self.page_titles["power"], "power"),
             ("keyboard", self.page_titles["keyboard"], "keyboard"),
+            ("app_profiles", self.page_titles["app_profiles"], "app_profiles"),
             ("mux", "MUX", "mux"),
             ("settings", self.page_titles["settings"], "settings"),
         ]
@@ -2537,7 +2582,7 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
             target.add_css_class(target_cls)
 
         self._apply_home_scale(bucket)
-        for page_attr in ("fan_page", "lighting_page", "app_profiles_page", "keyboard_page", "mux_page", "settings_page"):
+        for page_attr in ("fan_page", "lighting_page", "power_page", "app_profiles_page", "keyboard_page", "mux_page", "settings_page"):
             page = getattr(self, page_attr, None)
             if page and hasattr(page, "set_ui_scale"):
                 try:
@@ -3039,6 +3084,7 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
             self.fan_page.set_platform_service(self.services["platform"])
             self.fan_page.set_power_service(self.services["power"])
             self.fan_page.set_rgb_service(self.services["rgb"])
+            self.power_page.set_service(self.services["power"])
             self.lighting_page.set_service(self.services["rgb"])
             if hasattr(self, 'keyboard_page'):
                 self.keyboard_page.set_service(self.services["platform"])
@@ -3105,6 +3151,7 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
             "dashboard": T("dashboard"),
             "fan": T("fan"),
             "lighting": T("lighting"),
+            "power": T("power_tuning"),
             "app_profiles": T("app_profiles"),
             "keyboard": T("keyboard"),
             "mux": "MUX",
@@ -3464,6 +3511,41 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
             keyboard["metric_sub"].set_label("Varsayılan" if get_lang() == "tr" else "Default")
             self._set_launcher_badge("keyboard", False)
 
+        power = self._launcher_cards.get("power")
+        if power:
+            caps = ppi.get("capabilities", {}) if isinstance(ppi, dict) else {}
+            supported = caps.get("supports_undervolt", True) or caps.get("supports_tcc_offset", True) or caps.get("supports_power_limits", True)
+            is_tr = get_lang() == "tr"
+            is_hi = get_lang() == "hi"
+            if not supported:
+                power["metric_main"].set_label("Desteklenmiyor" if is_tr else "असमर्थित" if is_hi else "Unsupported")
+                power["metric_sub"].set_label("")
+                self._set_launcher_dimmed("power", True)
+                if "power" in self.nav_buttons:
+                    self.nav_buttons["power"].set_visible(False)
+            else:
+                uv = ppi.get("undervolt_mv", 0)
+                tcc = ppi.get("tcc_offset", 0)
+                default_lbl = "Varsayılan" if is_tr else "डिफ़ॉल्ट" if is_hi else "Default"
+                power["metric_main"].set_label(f"{uv}mV" if uv < 0 else default_lbl)
+                no_limit_lbl = "Limit Yok" if is_tr else "कोई सीमा नहीं" if is_hi else "No Limit"
+                power["metric_sub"].set_label(f"TCC: {tcc}" if tcc > 0 else no_limit_lbl)
+                self._set_launcher_dimmed("power", False)
+                if "power" in self.nav_buttons:
+                    self.nav_buttons["power"].set_visible(True)
+            self._set_launcher_badge("power", False)
+
+        app_profiles = self._launcher_cards.get("app_profiles")
+        if app_profiles:
+            is_tr = get_lang() == "tr"
+            is_hi = get_lang() == "hi"
+            enabled = ppi.get("app_profiles_enabled", False)
+            active_lbl = ("Aktif" if enabled else "Kapalı") if is_tr else ("सक्रिय" if enabled else "निष्क्रिय") if is_hi else ("Active" if enabled else "Inactive")
+            auto_lbl = "Otomatik" if is_tr else "ऑटो" if is_hi else "Auto"
+            app_profiles["metric_main"].set_label(active_lbl)
+            app_profiles["metric_sub"].set_label(auto_lbl)
+            self._set_launcher_badge("app_profiles", False)
+
         settings = self._launcher_cards.get("settings")
         if settings:
             settings["metric_main"].set_label("OK" if ok else "Offline")
@@ -3490,12 +3572,12 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
             if current_page == "dashboard":
                 current_page = "fan"
 
-            for attr in ('fan_page', 'lighting_page', 'app_profiles_page'):
+            for attr in ('fan_page', 'lighting_page', 'power_page', 'app_profiles_page'):
                 page = getattr(self, attr, None)
                 if page and hasattr(page, 'cleanup'):
                     page.cleanup()
 
-            for name in ("home", "fan", "lighting", "app_profiles", "keyboard", "mux", "settings"):
+            for name in ("home", "fan", "lighting", "power", "app_profiles", "keyboard", "mux", "settings"):
                 child = self.stack.get_child_by_name(name)
                 if child:
                     self.stack.remove(child)
@@ -3503,6 +3585,7 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
             self.home_page = self._build_home_page()
             self.fan_page        = FanPage(service=None, on_profile_change=self._on_profile_mode_changed)
             self.lighting_page   = LightingPage(service=None)
+            self.power_page      = PowerPage(service=None)
             self.keyboard_page   = KeyboardPage(service=None)
             self.app_profiles_page = AppProfilesPage(service=None)
             self.mux_page        = MUXPage(service=None)
@@ -3516,6 +3599,7 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
             self.stack.add_named(self.home_page, "home")
             self.stack.add_named(self.fan_page,        "fan")
             self.stack.add_named(self.lighting_page,   "lighting")
+            self.stack.add_named(self.power_page,      "power")
             self.stack.add_named(self.app_profiles_page, "app_profiles")
             self.stack.add_named(self.keyboard_page,   "keyboard")
             self.stack.add_named(self.mux_page,        "mux")
@@ -3527,6 +3611,7 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
                 self.fan_page.set_service(services.get("fan"))
                 self.fan_page.set_platform_service(services.get("platform"))
                 self.fan_page.set_power_service(services.get("power"))
+                self.power_page.set_service(services.get("power"))
                 self.lighting_page.set_service(services.get("rgb"))
                 self.keyboard_page.set_service(services.get("platform"))
                 self.app_profiles_page.set_power_service(services.get("power"))
@@ -3559,8 +3644,7 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
 
     def do_close_request(self):
         app = self.get_application()
-        # force_quit is checked in case we implement a proper GTK4 tray later
-        if not getattr(self, "force_quit", False) and False: # Disabled tray icon hide behavior
+        if not getattr(self, "force_quit", False):
             self.set_visible(False)
             return True
 
@@ -3578,7 +3662,7 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
             except Exception:
                 pass
             self._launcher_timer_id = None
-        for attr in ('lighting_page', 'fan_page'):
+        for attr in ('lighting_page', 'fan_page', 'power_page'):
             page = getattr(self, attr, None)
             if page and hasattr(page, 'cleanup'):
                 try:
@@ -3597,23 +3681,47 @@ class HPManagerWindow(Adw.ApplicationWindow if HAS_ADW else Gtk.ApplicationWindo
 class HPManagerApp(Adw.Application if HAS_ADW else Gtk.Application):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.connect('activate', self._on_activate)
-        self.is_hidden = "--hidden" in sys.argv
-        if self.is_hidden:
-            sys.argv.remove("--hidden")
-        self.tray_icon = None
+        self.connect('command-line', self._on_command_line)
+        self.tray_proc = None
 
-    def _on_activate(self, app):
+    def _on_command_line(self, app, cmdline):
+        args = cmdline.get_arguments()
+        is_hidden = "--hidden" in args
+        is_quit = "--quit" in args
+
+        if is_quit:
+            if hasattr(self, 'win'):
+                self.win.force_quit = True
+                self.win.close()
+            if self.tray_proc:
+                try: self.tray_proc.terminate()
+                except: pass
+            self.quit()
+            return 0
+
         if not hasattr(self, 'win'):
             print("Initializing window...", flush=True)
+            self.hold() # Ensure application remains running in background when hidden
             self.win = HPManagerWindow(application=app)
             
-            # pystray removed: Mixing GTK3 (AppIndicator) and GTK4 causes crashes/deadlocks on Linux.
+            tray_path = None
+            if shutil.which("omen-tray"):
+                tray_path = ["omen-tray"]
+            else:
+                local_tray = os.path.join(os.path.dirname(os.path.abspath(__file__)), "omen-tray.py")
+                if os.path.exists(local_tray):
+                    tray_path = [sys.executable, local_tray]
+            
+            if tray_path:
+                try:
+                    self.tray_proc = subprocess.Popen(tray_path)
+                except Exception as e:
+                    print(f"Failed to start tray process: {e}")
 
-        if not self.is_hidden:
+        if not is_hidden:
             self.win.present()
-        
-        self.is_hidden = False
+
+        return 0
 
 
 def main():
@@ -3622,7 +3730,7 @@ def main():
         print("Warning: libadwaita (Adw) not found. Running with GTK fallback theme support.", flush=True)
     app = HPManagerApp(
         application_id="com.yyl.hpmanager",
-        flags=Gio.ApplicationFlags.FLAGS_NONE,
+        flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE,
     )
     sys.exit(app.run(sys.argv))
 

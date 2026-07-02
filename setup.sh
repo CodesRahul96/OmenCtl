@@ -13,7 +13,7 @@ OMENCTL_LINK="/usr/bin/omenctl"
 CLI_LINK="/usr/bin/omen"
 UNINSTALLER_LINK="/usr/bin/hp-manager-uninstall"
 CONFIG_DIR="/etc/hp-manager"
-VERSION="1.5.3"
+VERSION="1.6.0-preview"
 
 # Colors
 RED='\033[0;31m'
@@ -630,9 +630,11 @@ do_install() {
     cp src/gui/pages/*.py     "$DATA_DIR/gui/pages/"
     cp src/gui/widgets/*.py   "$DATA_DIR/gui/widgets/"
 
-    # CLI files
+    # CLI and Tray files
     cp src/omen-cli.py "$INSTALL_DIR/"
     chmod +x "$INSTALL_DIR/omen-cli.py"
+    cp src/omen-tray.py "$INSTALL_DIR/"
+    chmod +x "$INSTALL_DIR/omen-tray.py"
 
     # Images (non-fatal if missing)
     if [ -d "images" ] && [ -n "$(ls -A images 2>/dev/null)" ]; then
@@ -655,13 +657,28 @@ LAUNCHER
     chmod +x "$BIN_LINK"
     ln -sf "$BIN_LINK" "$OMENCTL_LINK"
 
-    # CLI link
+    # CLI and Tray link
     ln -sf "$INSTALL_DIR/omen-cli.py" "$CLI_LINK"
+    ln -sf "$INSTALL_DIR/omen-tray.py" "/usr/bin/omen-tray"
 
     # System integration
     mkdir -p /etc/dbus-1/system.d
     mkdir -p /usr/share/polkit-1/actions
     mkdir -p /usr/share/applications
+    mkdir -p /etc/xdg/autostart
+
+    cat > /etc/xdg/autostart/omenctl-bg.desktop << 'AUTOSTART'
+[Desktop Entry]
+Type=Application
+Name=OmenCtl Background
+Comment=Start OmenCtl in background on login
+Exec=bash -c "sleep 5 && omenctl --hidden"
+Icon=omenctl
+Terminal=false
+Categories=Settings;System;
+X-GNOME-Autostart-enabled=true
+AUTOSTART
+    chmod 644 /etc/xdg/autostart/omenctl-bg.desktop
 
     # Ensure legacy monolithic service is stopped and removed
     systemctl stop com.yyl.hpmanager.service 2>/dev/null || true
@@ -727,6 +744,7 @@ rm -f /etc/systemd/system/com.yyl.hpmanager.service
 rm -f "$BIN_LINK"
 rm -f "$OMENCTL_LINK"
 rm -f "$CLI_LINK"
+rm -f "/usr/bin/omen-tray"
 rm -rf "$INSTALL_DIR"
 rm -rf "$DATA_DIR"
 rm -rf "/var/lib/hp-manager"
@@ -736,6 +754,7 @@ for svc in fan rgb power mux platform; do
     rm -f "/etc/dbus-1/system.d/com.yyl.hpmanager.${svc}.conf"
 done
 rm -f /usr/share/applications/com.yyl.hpmanager.desktop
+rm -f /etc/xdg/autostart/omenctl-bg.desktop
 rm -f /usr/share/icons/hicolor/48x48/apps/omenctl.png
 rm -f /etc/modules-load.d/hp-rgb-lighting.conf
 rm -f /etc/modules-load.d/hp-wmi.conf
@@ -816,15 +835,15 @@ do_update() {
     info "$(msg updating)"
 
     # ── 1. Pull latest source ─────────────────────────────────────────────
-    # if [ -d ".git" ] && [ "${_UPDATE_GIT_DONE:-}" != "1" ]; then
-    #     info "Pulling latest changes..."
-    #     git stash 2>/dev/null || true
-    #     git pull
-    #     # Re-exec with the freshly updated script so bash reads the new version
-    #     info "Restarting setup with updated script..."
-    #     export _UPDATE_GIT_DONE=1
-    #     exec "$0" _update_apply
-    # fi
+    if [ -d ".git" ] && [ "${_UPDATE_GIT_DONE:-}" != "1" ]; then
+        info "Pulling latest changes..."
+        git stash 2>/dev/null || true
+        git pull
+        # Re-exec with the freshly updated script so bash reads the new version
+        info "Restarting setup with updated script..."
+        export _UPDATE_GIT_DONE=1
+        exec "$0" _update_apply
+    fi
 
     # ── 2. Nuke EVERYTHING from previous installs ─────────────────────────
 
@@ -896,6 +915,7 @@ do_update() {
     rm -f "$BIN_LINK"
     rm -f "$OMENCTL_LINK"
     rm -f "$CLI_LINK"
+    rm -f "/usr/bin/omen-tray"
     rm -f "$UNINSTALLER_LINK"
     rm -rf "$INSTALL_DIR"
     rm -rf "$DATA_DIR"
@@ -906,6 +926,7 @@ do_update() {
         rm -f "/etc/dbus-1/system.d/com.yyl.hpmanager.${svc}.conf"
     done
     rm -f /usr/share/applications/com.yyl.hpmanager.desktop
+    rm -f /etc/xdg/autostart/omenctl-bg.desktop
     rm -f /usr/share/icons/hicolor/48x48/apps/omenctl.png
     rm -f /etc/modules-load.d/hp-rgb-lighting.conf
     rm -f /etc/modules-load.d/hp-wmi.conf

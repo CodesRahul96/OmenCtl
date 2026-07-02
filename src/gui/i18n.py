@@ -164,6 +164,20 @@ TRANSLATIONS = {
         "rgb_breathing": "Nefes Alma Efekti",
         "rgb_cycle": "Renk Döngüsü Efekti",
         "rgb_wave": "Renk Dalgası Efekti",
+        # Power & Voltage Page
+        "power_tuning": "Güç ve Voltaj",
+        "power_tuning_desc": "Gelişmiş undervolt ve termal limit ayarlarıyla aşırı ısınmayı önleyin ve verimliliği artırın.",
+        "undervolt_label": "İşlemci Voltaj Düşürme (Undervolt)",
+        "undervolt_desc": "İşlemci voltajını düşürmek, performanstan ödün vermeden çalışma sıcaklıklarını düşürür.",
+        "tcc_label": "TCC Ofseti (Termal Limit)",
+        "tcc_desc": "Aşırı ısınmayı önlemek için maksimum çalışma sıcaklığını düşürür (Hedef Sıcaklık: 100 - TCC).",
+        "power_limits_label": "Güç Limitleri (PL1 / PL2)",
+        "power_limits_desc": "Uzun süreli (PL1) ve kısa süreli (PL2) maksimum watt limitlerini yapılandırın.",
+        "pl1_w": "Uzun Süreli Güç Limiti (PL1 - Watt)",
+        "pl2_w": "Kısa Süreli Güç Limiti (PL2 - Watt)",
+        "apply_power": "Ayarları Uygula",
+        "power_applied": "Güç ve voltaj ayarları başarıyla uygulandı.",
+        "unsupported_power": "Sisteminiz bu gelişmiş güç kontrol özelliklerini desteklemiyor.",
     },
     "en": {
         # Nav
@@ -300,6 +314,20 @@ TRANSLATIONS = {
         "rgb_breathing": "Breathing Mode",
         "rgb_cycle": "Color Cycle Mode",
         "rgb_wave": "Wave Mode",
+        # Power & Voltage Page
+        "power_tuning": "Power & Voltage",
+        "power_tuning_desc": "Mitigate overheating and optimize efficiency with advanced undervolting and thermal limit offsets.",
+        "undervolt_label": "Processor Undervolting",
+        "undervolt_desc": "Decreasing CPU voltage reduces operating temperature without losing performance.",
+        "tcc_label": "TCC Offset (Thermal Limit)",
+        "tcc_desc": "Lowers maximum safe operating temperature to prevent thermal throttling (Target temp: 100 - TCC).",
+        "power_limits_label": "Power Limits (PL1 / PL2)",
+        "power_limits_desc": "Configure long-duration (PL1) and short-duration (PL2) maximum wattage thresholds.",
+        "pl1_w": "Long Duration Power Limit (PL1 - Watts)",
+        "pl2_w": "Short Duration Power Limit (PL2 - Watts)",
+        "apply_power": "Apply Tuning Settings",
+        "power_applied": "Power and undervolt tuning applied successfully.",
+        "unsupported_power": "Your system does not support these advanced power control options.",
     },
     "hi": {
         # Nav
@@ -436,6 +464,20 @@ TRANSLATIONS = {
         "rgb_breathing": "साँस लेने का मोड",
         "rgb_cycle": "कलर चक्र मोड",
         "rgb_wave": "वेव मोड",
+        # Power & Voltage Page
+        "power_tuning": "पावर और वोल्टेज",
+        "power_tuning_desc": "उन्नत अंडरवॉल्टिंग और थर्मल लिमिट ऑफसेट के साथ ओवरहीटिंग को कम करें और दक्षता को अनुकूलित करें।",
+        "undervolt_label": "प्रोसेसर अंडरवॉल्टिंग (Undervolt)",
+        "undervolt_desc": "प्रोसेसर वोल्टेज कम करने से प्रदर्शन में गिरावट के बिना तापमान कम होता है।",
+        "tcc_label": "TCC ऑफसेट (थर्मल लिमिट)",
+        "tcc_desc": "ओवरहीटिंग को रोकने के लिए अधिकतम सुरक्षित तापमान सीमा को कम करता है (लक्षित तापमान: 100 - TCC)।",
+        "power_limits_label": "पावर लिमिट (PL1 / PL2)",
+        "power_limits_desc": "दीर्घकालिक (PL1) और अल्पकालिक (PL2) अधिकतम वाट सीमाओं को कॉन्फ़िगर करें।",
+        "pl1_w": "दीर्घकालिक पावर सीमा (PL1 - Watts)",
+        "pl2_w": "अल्पकालिक पावर सीमा (PL2 - Watts)",
+        "apply_power": "ट्यूनिंग सेटिंग लागू करें",
+        "power_applied": "पावर और अंडरवॉल्ट ट्यूनिंग सफलतापूर्वक लागू हो गई है।",
+        "unsupported_power": "आपका सिस्टम इन उन्नत पावर ट्यूनिंग सेटिंग्स का समर्थन नहीं करता है।",
     },
 }
 

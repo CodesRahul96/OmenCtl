@@ -2,17 +2,17 @@
 
 pkgname=hp-laptop-manager-git
 _pkgname=HP-Laptop-Manager
-pkgver=1.5.3
+pkgver=1.6.0_preview
 pkgrel=1
 pkgdesc="Advanced HP Omen/Victus laptop manager for Linux with RGB, Fan, and MUX control"
 arch=('x86_64')
-url="https://github.com/yunusemreyl/OmenCtl"
+url="https://github.com/CodesRahul96/OmenCtl"
 license=('GPL')
 depends=('python' 'python-gobject' 'gtk4' 'libadwaita' 'python-pydbus' 'python-cairo' 'dkms' 'polkit')
 makedepends=('git' 'gcc' 'make' 'pkg-config')
 provides=('hp-laptop-manager')
 conflicts=('hp-laptop-manager')
-source=('git+https://github.com/yunusemreyl/OmenCtl.git')
+source=('git+https://github.com/CodesRahul96/OmenCtl.git')
 sha256sums=('SKIP')
 
 pkgver() {

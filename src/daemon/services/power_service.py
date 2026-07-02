@@ -6,6 +6,7 @@ GPU power-limit synchronisation.  Exposes its functionality over D-Bus
 as ``com.yyl.hpmanager.power``.
 """
 
+import concurrent.futures
 import json
 import os
 import shutil
@@ -18,8 +19,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from common.logging_config import setup_logging
 from common.config import ServiceConfig
-from common.app_launchers import get_running_launcher_ids
 from common.dbus_helpers import run_service
+from common.app_launchers import get_running_launcher_ids
 from common.sysfs import (
     normalize_profile_name,
     sysfs_exists,
@@ -27,11 +28,27 @@ from common.sysfs import (
     sysfs_read_str,
     sysfs_write,
 )
+from common.ec_controller import LinuxEcController
 
 from pydbus import SystemBus
 
 logger = setup_logging("power")
 THERMAL_PROFILE_BALANCED = 0
+
+_dbus_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="pwr-dbus")
+
+
+def _dbus_call(fn, *args, timeout=3.0):
+    """Run a D-Bus proxy call with a timeout to avoid indefinite blocking."""
+    fut = _dbus_pool.submit(fn, *args)
+    try:
+        return fut.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        logger.warning("D-Bus call timed out after %ss: %s", timeout, fn)
+        return None
+    except Exception as e:
+        logger.warning("D-Bus call failed: %s", e)
+        return None
 
 
 # ─── Power Profile Controller ────────────────────────────────────────────────
@@ -311,20 +328,40 @@ class PowerService:
         <method name="SetPowerProfile"><arg type="s" name="profile" direction="in"/><arg type="s" name="resp" direction="out"/></method>
         <method name="GetPowerProfile"><arg type="s" name="j" direction="out"/></method>
         <method name="SetAppProfilesEnabled"><arg type="b" name="enabled" direction="in"/><arg type="s" name="resp" direction="out"/></method>
-        <method name="SetAppProfiles"><arg type="s" name="json_str" direction="in"/><arg type="s" name="resp" direction="out"/></method>
+        <method name="SetAppProfiles"><arg type="s" name="profiles_json" direction="in"/><arg type="s" name="resp" direction="out"/></method>
+        <method name="SetUndervolt"><arg type="i" name="mv" direction="in"/><arg type="s" name="resp" direction="out"/></method>
+        <method name="SetTccOffset"><arg type="i" name="val" direction="in"/><arg type="s" name="resp" direction="out"/></method>
+        <method name="SetPowerLimits"><arg type="b" name="enabled" direction="in"/><arg type="i" name="pl1" direction="in"/><arg type="i" name="pl2" direction="in"/><arg type="s" name="resp" direction="out"/></method>
         <method name="Ping"><arg type="s" name="resp" direction="out"/></method>
       </interface>
     </node>
     """
 
     def __init__(self):
+        self.ec = LinuxEcController()
         self._ctrl = PowerProfileController()
-        self._config = ServiceConfig("power", {
-            "power_profile": "balanced",
-            "app_profiles_enabled": False,
-            "app_profiles": {}
-        })
+        self._config = ServiceConfig(
+            "power",
+            {
+                "power_profile": "balanced",
+                "app_profiles_enabled": False,
+                "app_profiles": {},
+                "undervolt_mv": 0,
+                "tcc_offset": 0,
+                "pl1_w": 45,
+                "pl2_w": 80,
+                "pl_enabled": False,
+            },
+        )
         self._config.load()
+        self._apply_power_tuning()
+
+    def _apply_power_tuning(self):
+        if self._config.get("pl_enabled"):
+            self.SetPowerLimits(True, self._config.get("pl1_w"), self._config.get("pl2_w"))
+
+        self._active_app = None
+        self._pre_app_state = None  # (power_profile, fan_mode)
 
         # Restore saved profile
         if self._ctrl.available:
@@ -336,210 +373,109 @@ class PowerService:
                 else:
                     logger.info("Power profile already '%s', skipping", saved)
 
-        self._matched_app = None
-        self._original_fan_mode = None
-        self._original_rgb_state = None
-        self._proc_cache = {}
-        # Start background app profiles monitor
-        self._monitor_thread = threading.Thread(target=self._app_monitor_loop, daemon=True)
-        self._monitor_thread.start()
+        # Background app monitor thread
+        threading.Thread(target=self._app_monitor_loop, daemon=True).start()
 
-    def _get_running_process_names(self):
-        names = set()
-        new_cache = {}
-        try:
-            for pid_dir in os.listdir("/proc"):
-                if not pid_dir.isdigit():
-                    continue
-                pid = int(pid_dir)
+    def _app_monitor_loop(self):
+        from pydbus import SystemBus
+        bus = SystemBus()
+        fan_proxy = None
+        
+        while True:
+            time.sleep(3.0)
+            if not self._config.get("app_profiles_enabled", False):
+                if self._active_app is not None:
+                    self._restore_pre_app_state(fan_proxy)
+                continue
+
+            app_profiles = self._config.get("app_profiles", {})
+            if not app_profiles:
+                if self._active_app is not None:
+                    self._restore_pre_app_state(fan_proxy)
+                continue
+
+            if fan_proxy is None:
                 try:
-                    mtime = os.path.getmtime(f"/proc/{pid_dir}")
-                except Exception:
-                    continue
-
-                cached_val = self._proc_cache.get(pid)
-                if cached_val and cached_val["mtime"] == mtime:
-                    names.update(cached_val["names"])
-                    new_cache[pid] = cached_val
-                    continue
-
-                # Cache miss: read process info
-                pid_names = set()
-                try:
-                    # Read comm (command name)
-                    with open(f"/proc/{pid_dir}/comm", "r", errors="ignore") as f:
-                        comm = f.read().strip().lower()
-                        if comm:
-                            pid_names.add(comm)
-                    # Read cmdline (args/path)
-                    with open(f"/proc/{pid_dir}/cmdline", "r", errors="ignore") as f:
-                        cmd = f.read().replace("\x00", " ").strip().lower()
-                        if cmd:
-                            for token in cmd.split():
-                                base = os.path.basename(token)
-                                if base:
-                                    pid_names.add(base)
-                    # Read environ to check for launcher App IDs
-                    pid_names.update(get_running_launcher_ids(pid_dir))
+                    fan_proxy = _dbus_call(bus.get, "com.yyl.hpmanager.fan", "/com/yyl/hpmanager/fan")
                 except Exception:
                     pass
 
-                new_cache[pid] = {"mtime": mtime, "names": pid_names}
-                names.update(pid_names)
-            
-            self._proc_cache = new_cache
-        except Exception as e:
-            logger.warning("Failed to scan /proc: %s", e)
-        return names
-
-    def _app_monitor_loop(self):
-        # Allow system services to settle
-        time.sleep(5)
-        while True:
+            # Scan running processes and launchers
+            found_app = None
             try:
-                enabled = self._config.get("app_profiles_enabled", False)
-                app_profiles = self._config.get("app_profiles", {})
-                user_profile = self._config.get("power_profile", "balanced")
-
-                matched_app = None
-                matched_profile = None
-                matched_fan_mode = "default"
-                matched_rgb_mode = "default"
-
-                if enabled and app_profiles:
-                    running = self._get_running_process_names()
-                    for app_name, val in app_profiles.items():
-                        profile = val.get("profile", "balanced") if isinstance(val, dict) else val
-                        fan_mode = val.get("fan_mode", "default") if isinstance(val, dict) else "default"
-                        rgb_mode = val.get("rgb", "default") if isinstance(val, dict) else "default"
-                        app_lower = app_name.lower()
-                        if app_lower in running:
-                            matched_app = app_name
-                            matched_profile = profile
-                            matched_fan_mode = fan_mode
-                            matched_rgb_mode = rgb_mode
-                            break
+                for pid_str in os.listdir("/proc"):
+                    if not pid_str.isdigit():
+                        continue
+                    try:
+                        cmdline_path = os.path.join("/proc", pid_str, "cmdline")
+                        if os.stat(cmdline_path).st_uid < 1000:
+                            continue
+                        with open(cmdline_path, "r", errors="ignore") as f:
+                            cmdline = f.read().replace("\x00", " ").strip()
+                        if not cmdline:
+                            continue
                         
-                        # Check substring match
-                        for r in running:
-                            if app_lower in r:
-                                matched_app = app_name
-                                matched_profile = profile
-                                matched_fan_mode = fan_mode
-                                matched_rgb_mode = rgb_mode
+                        # Check direct matches
+                        for app_key in app_profiles.keys():
+                            if app_key in cmdline.lower():
+                                found_app = app_key
                                 break
-                        if matched_app:
-                            break
+                                
+                        # Check launcher IDs
+                        if not found_app:
+                            l_ids = get_running_launcher_ids(pid_str)
+                            for app_key in app_profiles.keys():
+                                if app_key in l_ids:
+                                    found_app = app_key
+                                    break
+                    except Exception:
+                        pass
+                    if found_app:
+                        break
+            except Exception:
+                pass
 
-                self._matched_app = matched_app
-                if matched_app:
-                    current_applied = self._ctrl.get_active()
-                    if current_applied != matched_profile:
-                        logger.info(
-                            "App Profiles: Detected target app '%s' running, switching profile to '%s' (user default: '%s')",
-                            matched_app, matched_profile, user_profile
-                        )
-                        self._ctrl.set_profile(matched_profile)
+            if found_app != self._active_app:
+                if found_app is not None:
+                    # New app launched
+                    val = app_profiles.get(found_app)
+                    target_profile = val.get("profile", "balanced") if isinstance(val, dict) else val
+                    target_fan = val.get("fan_mode", "default") if isinstance(val, dict) else "default"
                     
-                    if matched_fan_mode and matched_fan_mode != "default":
-                        current_fan = self._get_system_fan_mode()
-                        if current_fan != matched_fan_mode:
-                            if self._original_fan_mode is None:
-                                self._original_fan_mode = current_fan
-                            logger.info("App Profiles: Switching fan mode to '%s' (was '%s')", matched_fan_mode, current_fan)
-                            self._set_system_fan_mode(matched_fan_mode)
+                    # Store previous state
+                    curr_power = self._ctrl.get_active()
+                    curr_fan = "auto"
+                    if fan_proxy:
+                        try:
+                            f_info_raw = _dbus_call(fan_proxy.GetFanInfo)
+                            if f_info_raw:
+                                f_info = json.loads(f_info_raw)
+                                curr_fan = f_info.get("mode", "auto")
+                        except Exception:
+                            pass
+                    
+                    if self._active_app is None:
+                        self._pre_app_state = (curr_power, curr_fan)
 
-                    if matched_rgb_mode and matched_rgb_mode != "default":
-                        if self._original_rgb_state is None:
-                            current_rgb = self._get_system_rgb_state()
-                            if current_rgb:
-                                self._original_rgb_state = current_rgb
-                            logger.info("App Profiles: Switching RGB state to '%s'", matched_rgb_mode)
-                            self._set_system_rgb_state(matched_rgb_mode)
+                    logger.info("App Monitor: Detected '%s', switching power=%s, fan=%s", found_app, target_profile, target_fan)
+                    self._ctrl.set_profile(target_profile)
+                    if fan_proxy and target_fan in ("auto", "max"):
+                        _dbus_call(fan_proxy.SetFanMode, target_fan)
                 else:
-                    current_applied = self._ctrl.get_active()
-                    if current_applied != user_profile:
-                        logger.info(
-                            "App Profiles: Restoring user profile '%s' (was '%s')",
-                            user_profile, current_applied
-                        )
-                        self._ctrl.set_profile(user_profile)
-                    
-                    if self._original_fan_mode is not None:
-                        logger.info("App Profiles: Restoring fan mode to '%s'", self._original_fan_mode)
-                        self._set_system_fan_mode(self._original_fan_mode)
-                        self._original_fan_mode = None
+                    # App closed, restore previous state
+                    self._restore_pre_app_state(fan_proxy)
+                
+                self._active_app = found_app
 
-                    if self._original_rgb_state is not None:
-                        logger.info("App Profiles: Restoring RGB state")
-                        self._set_system_rgb_state(self._original_rgb_state)
-                        self._original_rgb_state = None
-
-            except Exception as e:
-                logger.warning("Error in app monitor loop: %s", e)
-
-            time.sleep(4)
-
-    def _get_system_fan_mode(self):
-        try:
-            bus = SystemBus()
-            fan_svc = bus.get("com.yyl.hpmanager.fan")
-            info_json = fan_svc.GetFanInfo()
-            info = json.loads(info_json)
-            return info.get("mode", "auto")
-        except Exception as e:
-            logger.warning("Failed to query fan mode via D-Bus: %s", e)
-            return "auto"
-
-    def _set_system_fan_mode(self, mode):
-        try:
-            bus = SystemBus()
-            fan_svc = bus.get("com.yyl.hpmanager.fan")
-            fan_svc.SetFanMode(mode)
-        except Exception as e:
-            logger.error("Failed to set fan mode via D-Bus: %s", e)
-
-    def _get_system_rgb_state(self):
-        try:
-            bus = SystemBus()
-            rgb_svc = bus.get("com.yyl.hpmanager.rgb")
-            state_json = rgb_svc.GetState()
-            return json.loads(state_json)
-        except Exception as e:
-            logger.warning("Failed to query RGB state via D-Bus: %s", e)
-            return None
-
-    def _set_system_rgb_state(self, state):
-        try:
-            bus = SystemBus()
-            rgb_svc = bus.get("com.yyl.hpmanager.rgb")
-            if isinstance(state, dict):
-                # Restore colors
-                colors = state.get("colors", [])
-                for z, c in enumerate(colors[:8]):
-                    rgb_svc.SetColor(z, c)
-                # Restore mode and speed
-                rgb_svc.SetMode(state.get("mode", "static"), state.get("speed", 50))
-                # Restore global settings
-                rgb_svc.SetGlobal(state.get("power", True), state.get("brightness", 100), state.get("direction", "ltr"))
-            elif isinstance(state, str):
-                # Apply preset overrides
-                if state == "static_red":
-                    rgb_svc.SetColor(8, "FF0000")
-                elif state == "static_green":
-                    rgb_svc.SetColor(8, "00FF00")
-                elif state == "static_blue":
-                    rgb_svc.SetColor(8, "0000FF")
-                elif state == "static_white":
-                    rgb_svc.SetColor(8, "FFFFFF")
-                elif state == "breathing":
-                    rgb_svc.SetMode("breathing", 50)
-                elif state == "cycle":
-                    rgb_svc.SetMode("cycle", 50)
-                elif state == "wave":
-                    rgb_svc.SetMode("wave", 50)
-        except Exception as e:
-            logger.error("Failed to set RGB state via D-Bus: %s", e)
+    def _restore_pre_app_state(self, fan_proxy):
+        if self._pre_app_state:
+            old_power, old_fan = self._pre_app_state
+            logger.info("App Monitor: App closed, restoring power=%s, fan=%s", old_power, old_fan)
+            self._ctrl.set_profile(old_power)
+            if fan_proxy and old_fan in ("auto", "max"):
+                _dbus_call(fan_proxy.SetFanMode, old_fan)
+            self._pre_app_state = None
+        self._active_app = None
 
     def SetPowerProfile(self, profile):
         if profile not in self._ctrl.get_profiles():
@@ -548,50 +484,11 @@ class PowerService:
         if ok:
             self._config.set("power_profile", profile)
             self._config.save()
+            if self._active_app is not None and self._pre_app_state is not None:
+                # Update base state if user forces profile change while app is active
+                _, old_fan = self._pre_app_state
+                self._pre_app_state = (profile, old_fan)
         return "OK" if ok else "FAIL"
-
-    def SetAppProfilesEnabled(self, enabled):
-        self._config.set("app_profiles_enabled", bool(enabled))
-        self._config.save()
-        logger.info("App Profiles Enabled: %s", enabled)
-        return "OK"
-
-    def SetAppProfiles(self, json_str):
-        try:
-            mapping = json.loads(json_str)
-            if not isinstance(mapping, dict):
-                return "FAIL"
-
-            # Always have a valid set to check against — fall back to known names
-            # if the power backend is unavailable (e.g. hp-wmi not installed).
-            _raw_profiles = self._ctrl.get_profiles()
-            valid_profiles = set(_raw_profiles) if _raw_profiles else {"power-saver", "balanced", "performance"}
-            valid_fan   = {"default", "auto", "max"}
-            valid_theme = {"default", "dark", "light"}
-            valid_rgb   = {"default", "static_red", "static_green", "static_blue",
-                           "static_white", "breathing", "cycle", "wave"}
-
-            cleaned = {}
-            for app, val in mapping.items():
-                profile_name = val.get("profile") if isinstance(val, dict) else val
-                if profile_name not in valid_profiles:
-                    logger.warning("SetAppProfiles: skipping '%s' — unknown profile '%s'", app, profile_name)
-                    continue
-                if isinstance(val, dict):
-                    if val.get("fan_mode", "default") not in valid_fan or \
-                       val.get("theme", "default") not in valid_theme or \
-                       val.get("rgb", "default") not in valid_rgb:
-                        logger.warning("SetAppProfiles: skipping '%s' — invalid field value", app)
-                        continue
-                cleaned[app] = val
-
-            self._config.set("app_profiles", cleaned)
-            self._config.save()
-            logger.info("App Profiles Updated: %s", cleaned)
-            return "OK"
-        except Exception as e:
-            logger.error("Failed to parse app profiles: %s", e)
-            return "FAIL"
 
     def GetPowerProfile(self):
         return json.dumps(
@@ -601,9 +498,90 @@ class PowerService:
                 "profiles": self._ctrl.get_profiles(),
                 "app_profiles_enabled": self._config.get("app_profiles_enabled", False),
                 "app_profiles": self._config.get("app_profiles", {}),
-                "active_app": getattr(self, "_matched_app", None),
+                "active_app": self._active_app,
+                "capabilities": self.ec.capabilities.to_dict(),
+                "undervolt_mv": self._config.get("undervolt_mv", 0),
+                "tcc_offset": self._config.get("tcc_offset", 0),
+                "pl1_w": self._config.get("pl1_w", 45),
+                "pl2_w": self._config.get("pl2_w", 80),
+                "pl_enabled": self._config.get("pl_enabled", False),
             }
         )
+
+    def SetUndervolt(self, mv):
+        try:
+            mv = int(mv)
+            mv = max(-250, min(250, mv))
+        except (ValueError, TypeError):
+            return "FAIL"
+        logger.info("SetUndervolt: %d mV", mv)
+        self._config.set("undervolt_mv", mv)
+        self._config.save()
+        try:
+            if shutil.which("intel-undervolt"):
+                subprocess.run(["intel-undervolt", "apply"], capture_output=True)
+            elif shutil.which("ryzenadj"):
+                subprocess.run(["ryzenadj", f"--curve-opt={mv}"], capture_output=True)
+        except Exception as e:
+            logger.debug("Failed to apply undervolt: %s", e)
+        return "OK"
+
+    def SetTccOffset(self, val):
+        try:
+            val = int(val)
+            val = max(0, min(15, val))
+        except (ValueError, TypeError):
+            return "FAIL"
+        logger.info("SetTccOffset: %d", val)
+        self._config.set("tcc_offset", val)
+        self._config.save()
+        try:
+            if shutil.which("wrmsr"):
+                # MSR 0x1a2 is MSR_TEMPERATURE_TARGET
+                subprocess.run(["wrmsr", "-a", "0x1a2", f"{val:x}000000"], capture_output=True)
+            elif shutil.which("ryzenadj"):
+                subprocess.run(["ryzenadj", f"--max-temp={100 - val}"], capture_output=True)
+        except Exception as e:
+            logger.debug("Failed to apply TCC offset: %s", e)
+        return "OK"
+
+    def SetPowerLimits(self, enabled, pl1, pl2):
+        logger.info("SetPowerLimits: enabled=%s, pl1=%d, pl2=%d", enabled, pl1, pl2)
+        self._config.set("pl_enabled", bool(enabled))
+        self._config.set("pl1_w", int(pl1))
+        self._config.set("pl2_w", int(pl2))
+        self._config.save()
+        if not enabled:
+            return "OK"
+        try:
+            rapl1 = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_0_power_limit_uw"
+            rapl2 = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_1_power_limit_uw"
+            if sysfs_exists(rapl1):
+                sysfs_write(rapl1, int(pl1) * 1000000)
+            if sysfs_exists(rapl2):
+                sysfs_write(rapl2, int(pl2) * 1000000)
+            if shutil.which("ryzenadj"):
+                subprocess.run(["ryzenadj", f"--stapm-limit={int(pl1)*1000}", f"--fast-limit={int(pl2)*1000}", f"--slow-limit={int(pl1)*1000}"], capture_output=True)
+        except Exception as e:
+            logger.debug("Failed to apply power limits: %s", e)
+        return "OK"
+
+    def SetAppProfilesEnabled(self, enabled):
+        logger.info("SetAppProfilesEnabled: %s", enabled)
+        self._config.set("app_profiles_enabled", bool(enabled))
+        self._config.save()
+        return "OK"
+
+    def SetAppProfiles(self, profiles_json):
+        logger.info("SetAppProfiles: %s", profiles_json)
+        try:
+            data = json.loads(profiles_json)
+            self._config.set("app_profiles", data)
+            self._config.save()
+            return "OK"
+        except Exception as e:
+            logger.error("Failed to parse app profiles json: %s", e)
+            return "FAIL"
 
     def Ping(self):
         return "OK"

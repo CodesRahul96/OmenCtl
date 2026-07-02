@@ -1,4 +1,4 @@
-## OmenControl v1.5.3 ##
+## OmenControl v1.6.0-preview ##
 <p align="center">
   <img src="images/omenctl.png" alt="OmenCtl Logo" width="180">
 </p>
@@ -118,10 +118,10 @@
 
 ---
 > [!NOTE]
->### Upgrading to v1.5.3
+>### Upgrading to v1.6.0-preview
 >To upgrade your current installation, clean up legacy remnants, and load the new optimized permissions:
 >```bash
->git clone https://github.com/yunusemreyl/OmenCtl.git
+>git clone https://github.com/CodesRahul96/OmenCtl.git
 >cd OmenCtl
 >git pull
 >sudo ./setup.sh update
@@ -132,7 +132,7 @@
 Open your terminal and run:
 ```bash
 # Clone the repository
-git clone https://github.com/yunusemreyl/OmenCtl.git
+git clone https://github.com/CodesRahul96/OmenCtl.git
 cd OmenCtl
 
 # Run the unified installer (requires root)
