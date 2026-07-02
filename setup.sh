@@ -816,15 +816,15 @@ do_update() {
     info "$(msg updating)"
 
     # ── 1. Pull latest source ─────────────────────────────────────────────
-    if [ -d ".git" ] && [ "${_UPDATE_GIT_DONE:-}" != "1" ]; then
-        info "Pulling latest changes..."
-        git stash 2>/dev/null || true
-        git pull
-        # Re-exec with the freshly updated script so bash reads the new version
-        info "Restarting setup with updated script..."
-        export _UPDATE_GIT_DONE=1
-        exec "$0" _update_apply
-    fi
+    # if [ -d ".git" ] && [ "${_UPDATE_GIT_DONE:-}" != "1" ]; then
+    #     info "Pulling latest changes..."
+    #     git stash 2>/dev/null || true
+    #     git pull
+    #     # Re-exec with the freshly updated script so bash reads the new version
+    #     info "Restarting setup with updated script..."
+    #     export _UPDATE_GIT_DONE=1
+    #     exec "$0" _update_apply
+    # fi
 
     # ── 2. Nuke EVERYTHING from previous installs ─────────────────────────
 
